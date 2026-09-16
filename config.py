@@ -12,13 +12,15 @@ STOREMASTER = os.path.join(BASE_DIR, "StoreMAster.xlsx")
 EXPORTS_DIR = os.path.join(BASE_DIR, "exports")
 LOG_FILE    = os.path.join(BASE_DIR, "automation.log")
 
-# == Power BI (no URL needed - script discovers it automatically) ==============
-PBI_WORKSPACE_NAME = "AutoEmails"         # Exact workspace name in Power BI Service
-PBI_REPORT_NAME    = "Franchise DataSet"  # Exact report name in that workspace
+# == Power BI REST API =========================================================
+# IDs taken from the Power BI Service URL (confirmed in test runs).
+PBI_GROUP_ID   = "df64deac-1436-446d-a5cf-f7f30103f7c5"   # Workspace (group) ID
+PBI_REPORT_ID  = "6aacdb66-1554-4930-84da-7b40588ecb22"   # Report ID
+PBI_RLS_ROLE   = "AOM"   # RLS role name exactly as defined in PBI Desktop → Manage roles
 
-# Exact table + column in the Power BI data model used for RLS URL filtering
-PBI_FILTER_TABLE  = "Store Master"
-PBI_FILTER_COLUMN = "AOM Mail Id"
+# Human-readable labels (logs only)
+PBI_WORKSPACE_NAME = "AutoEmails"
+PBI_REPORT_NAME    = "Franchise DataSet"
 
 # == Zoho SMTP =================================================================
 SMTP_HOST         = "smtp.zoho.in"

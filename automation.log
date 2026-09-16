@@ -1,0 +1,347 @@
+2026-09-16 15:27:31  INFO      =======================================================
+2026-09-16 15:27:31  INFO        Power BI Report Automation
+2026-09-16 15:27:31  INFO        Running immediately (--now)
+2026-09-16 15:27:31  INFO      =======================================================
+2026-09-16 15:35:29  INFO      Loaded 3 AOM(s) from StoreMAster.xlsx
+2026-09-16 15:35:29  INFO        - Kamal Tiwari | filter: aomnorth1@kisna.com | send to: arshdeep.matharo@kisna.com
+2026-09-16 15:35:29  INFO        - Bhrigunath Chaurasia | filter: aomnorth3d@kisna.com | send to: pranav.falod@kisna.com
+2026-09-16 15:35:29  INFO        - Ritesh Soni | filter: aomnorth1b@kisna.com | send to: pragati.panhale@kisna.com
+2026-09-16 15:39:47  INFO      =======================================================
+2026-09-16 15:39:47  INFO        Power BI Report Automation
+2026-09-16 15:39:47  INFO        Running immediately (--now)
+2026-09-16 15:39:47  INFO      =======================================================
+2026-09-16 15:40:24  INFO      Loaded 3 AOM(s) from StoreMAster.xlsx
+2026-09-16 15:40:24  INFO        - Kamal Tiwari | filter: aomnorth1@kisna.com | send to: arshdeep.matharo@kisna.com
+2026-09-16 15:40:24  INFO        - Bhrigunath Chaurasia | filter: aomnorth3d@kisna.com | send to: pranav.falod@kisna.com
+2026-09-16 15:40:24  INFO        - Ritesh Soni | filter: aomnorth1b@kisna.com | send to: pragati.panhale@kisna.com
+2026-09-16 15:40:24  INFO      Browser started (headless). Logging into Power BI...
+2026-09-16 15:49:13  INFO      =======================================================
+2026-09-16 15:49:13  INFO        Power BI Report Automation
+2026-09-16 15:49:13  INFO        Running immediately (--now)
+2026-09-16 15:49:13  INFO      =======================================================
+2026-09-16 15:49:28  INFO      =======================================================
+2026-09-16 15:49:28  INFO        Power BI Report Automation
+2026-09-16 15:49:28  INFO        Running immediately (--now)
+2026-09-16 15:49:28  INFO      =======================================================
+2026-09-16 15:49:43  INFO      Loaded 3 AOM(s) from StoreMAster.xlsx
+2026-09-16 15:49:43  INFO        - Kamal Tiwari | filter: aomnorth1@kisna.com | send to: arshdeep.matharo@kisna.com
+2026-09-16 15:49:43  INFO        - Bhrigunath Chaurasia | filter: aomnorth3d@kisna.com | send to: pranav.falod@kisna.com
+2026-09-16 15:49:43  INFO        - Ritesh Soni | filter: aomnorth1b@kisna.com | send to: pragati.panhale@kisna.com
+2026-09-16 15:49:44  INFO      Browser started (headless). Logging into Power BI...
+2026-09-16 15:49:44  INFO        Navigating to Microsoft login page...
+2026-09-16 15:49:52  INFO        Email submitted.
+2026-09-16 15:49:54  INFO        Password submitted. Checking for MFA...
+2026-09-16 15:49:57  INFO        No MFA challenge detected.
+2026-09-16 15:49:57  INFO        'Stay signed in?' -- answered No.
+2026-09-16 15:54:30  INFO      =======================================================
+2026-09-16 15:54:30  INFO        Power BI Report Automation
+2026-09-16 15:54:30  INFO        Running immediately (--now)
+2026-09-16 15:54:30  INFO      =======================================================
+2026-09-16 15:54:53  INFO      Loaded 3 AOM(s) from StoreMAster.xlsx
+2026-09-16 15:54:53  INFO        - Kamal Tiwari | filter: aomnorth1@kisna.com | send to: arshdeep.matharo@kisna.com
+2026-09-16 15:54:53  INFO        - Bhrigunath Chaurasia | filter: aomnorth3d@kisna.com | send to: pranav.falod@kisna.com
+2026-09-16 15:54:53  INFO        - Ritesh Soni | filter: aomnorth1b@kisna.com | send to: pragati.panhale@kisna.com
+2026-09-16 15:54:53  INFO      Browser started (headless). Logging into Power BI...
+2026-09-16 15:54:53  INFO        Navigating to Microsoft login page...
+2026-09-16 15:54:59  INFO        Email submitted.
+2026-09-16 15:55:01  INFO        Password submitted. Checking for MFA...
+2026-09-16 15:55:04  INFO        No MFA challenge detected.
+2026-09-16 15:55:04  INFO        'Stay signed in?' -- answered No.
+2026-09-16 15:55:04  INFO        Navigating to Power BI...
+2026-09-16 15:55:09  INFO        Logged in successfully.
+2026-09-16 15:55:09  INFO      Navigating to workspace "AutoEmail" -> report "Franchise DataSet"...
+2026-09-16 16:02:25  INFO      =======================================================
+2026-09-16 16:02:25  INFO        Power BI Report Automation
+2026-09-16 16:02:25  INFO        Running immediately (--now)
+2026-09-16 16:02:25  INFO      =======================================================
+2026-09-16 16:02:46  INFO      Loaded 3 AOM(s) from StoreMAster.xlsx
+2026-09-16 16:02:46  INFO        - Kamal Tiwari | filter: aomnorth1@kisna.com | send to: arshdeep.matharo@kisna.com
+2026-09-16 16:02:46  INFO        - Bhrigunath Chaurasia | filter: aomnorth3d@kisna.com | send to: pranav.falod@kisna.com
+2026-09-16 16:02:46  INFO        - Ritesh Soni | filter: aomnorth1b@kisna.com | send to: pragati.panhale@kisna.com
+2026-09-16 16:02:46  INFO      Browser started (headless). Logging into Power BI...
+2026-09-16 16:02:46  INFO        Navigating to Microsoft login page...
+2026-09-16 16:02:52  INFO        Email submitted.
+2026-09-16 16:02:54  INFO        Password submitted. Checking for MFA...
+2026-09-16 16:02:56  INFO        No MFA challenge detected.
+2026-09-16 16:02:56  INFO        'Stay signed in?' -- answered No.
+2026-09-16 16:02:56  INFO        Navigating to Power BI...
+2026-09-16 16:03:03  INFO        Logged in successfully.
+2026-09-16 16:03:03  INFO      Navigating to workspace "AutoEmail" -> report "Franchise DataSet"...
+2026-09-16 16:03:04  INFO        Looking for workspace "AutoEmail"...
+2026-09-16 16:03:08  INFO        Found workspace in sidebar.
+2026-09-16 16:03:08  INFO        Navigating to workspace directly...
+2026-09-16 16:05:36  INFO      =======================================================
+2026-09-16 16:05:36  INFO        Power BI Report Automation
+2026-09-16 16:05:36  INFO        Running immediately (--now)
+2026-09-16 16:05:36  INFO      =======================================================
+2026-09-16 16:06:00  INFO      Loaded 3 AOM(s) from StoreMAster.xlsx
+2026-09-16 16:06:00  INFO        - Kamal Tiwari | filter: aomnorth1@kisna.com | send to: arshdeep.matharo@kisna.com
+2026-09-16 16:06:00  INFO        - Bhrigunath Chaurasia | filter: aomnorth3d@kisna.com | send to: pranav.falod@kisna.com
+2026-09-16 16:06:00  INFO        - Ritesh Soni | filter: aomnorth1b@kisna.com | send to: pragati.panhale@kisna.com
+2026-09-16 16:06:01  INFO      Browser started (headless). Logging into Power BI...
+2026-09-16 16:06:01  INFO        Navigating to Microsoft login page...
+2026-09-16 16:06:07  INFO        Email submitted.
+2026-09-16 16:06:09  INFO        Password submitted. Checking for MFA...
+2026-09-16 16:06:12  INFO        No MFA challenge detected.
+2026-09-16 16:06:12  INFO        'Stay signed in?' -- answered No.
+2026-09-16 16:06:12  INFO        Navigating to Power BI...
+2026-09-16 16:09:59  INFO      =======================================================
+2026-09-16 16:09:59  INFO        Power BI Report Automation
+2026-09-16 16:09:59  INFO        Running immediately (--now)
+2026-09-16 16:09:59  INFO      =======================================================
+2026-09-16 16:10:34  INFO      Loaded 3 AOM(s) from StoreMAster.xlsx
+2026-09-16 16:10:34  INFO        - Kamal Tiwari | filter: aomnorth1@kisna.com | send to: arshdeep.matharo@kisna.com
+2026-09-16 16:10:34  INFO        - Bhrigunath Chaurasia | filter: aomnorth3d@kisna.com | send to: pranav.falod@kisna.com
+2026-09-16 16:10:34  INFO        - Ritesh Soni | filter: aomnorth1b@kisna.com | send to: pragati.panhale@kisna.com
+2026-09-16 16:10:34  INFO      Browser started (headless). Logging into Power BI...
+2026-09-16 16:10:34  INFO        Navigating to Microsoft login page...
+2026-09-16 16:10:40  INFO        Email submitted.
+2026-09-16 16:10:42  INFO        Password submitted. Checking for MFA...
+2026-09-16 16:10:44  INFO        No MFA challenge detected.
+2026-09-16 16:10:45  INFO        'Stay signed in?' -- answered No.
+2026-09-16 16:10:45  INFO        Navigating to Power BI...
+2026-09-16 16:10:49  INFO        Logged in successfully.
+2026-09-16 16:10:49  INFO      Navigating to workspace "AutoEmail" -> report "Franchise DataSet"...
+2026-09-16 16:10:49  INFO        Looking for workspace "AutoEmail"...
+2026-09-16 16:10:59  INFO        Found workspace in sidebar.
+2026-09-16 16:10:59  INFO        Navigating to workspace directly...
+2026-09-16 16:11:04  INFO        Looking for report "Franchise DataSet"...
+2026-09-16 16:11:04  INFO        Navigating to report...
+2026-09-16 16:11:13  INFO        Identity prompt dismissed (attempt 1).
+2026-09-16 16:11:15  INFO        Identity prompt dismissed (attempt 2).
+2026-09-16 16:11:17  INFO        Report URL: https://app.powerbi.com/groups/df64deac-1436-446d-a5cf-f7f30103f7c5/reports/6aacdb66-1554-4930-84da-7b40588ecb22/3f7afe66b87d29e97c83
+2026-09-16 16:11:17  INFO      Report URL acquired: https://app.powerbi.com/groups/df64deac-1436-446d-a5cf-f7f30103f7c5/reports/6aacdb66-1554-4930-84da-7b40588ecb22/3f7afe66b87d29e97c83
+2026-09-16 16:11:17  INFO      
+Processing: Kamal Tiwari
+2026-09-16 16:11:17  INFO        Loading filtered report...
+2026-09-16 16:11:30  INFO        Identity prompt dismissed (attempt 1).
+2026-09-16 16:11:32  INFO        Identity prompt dismissed (attempt 2).
+2026-09-16 16:11:43  INFO        File menu not found. Trying ellipsis menu...
+2026-09-16 16:11:53  ERROR       Export failed: Locator.click: Timeout 10000ms exceeded.
+Call log:
+  - waiting for locator("[aria-label=\"More options\"], button[title=\"More options\"]").first
+    - locator resolved to <button role="menuitem" tri-icon-button="" aria-haspopup="true" aria-current="false" aria-expanded="false" aria-label="More options" _ngcontent-ng-c4146218820="" data-testid="navbar-label-item-more..." aria-labelledby="navbar-labelledbyMore..." class="navbar-item navbar-item-active-no-indicator ng-star-inserted">…</button>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="cdk-overlay-backdrop cdk-overlay-transparent-backdrop cdk-overlay-backdrop-showing"></div> from <div class="cdk-overlay-container">…</div> subtree intercepts pointer events
+    - retrying click action
+    - waiting 20ms
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="cdk-overlay-backdrop cdk-overlay-transparent-backdrop cdk-overlay-backdrop-showing"></div> from <div class="cdk-overlay-container">…</div> subtree intercepts pointer events
+    - retrying click action
+      - waiting 100ms
+    18 × waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <div class="cdk-overlay-backdrop cdk-overlay-transparent-backdrop cdk-overlay-backdrop-showing"></div> from <div class="cdk-overlay-container">…</div> subtree intercepts pointer events
+     - retrying click action
+       - waiting 500ms
+
+2026-09-16 16:11:53  INFO        Debug screenshot: debug_Kamal Tiwari.png
+2026-09-16 16:11:53  ERROR       Export failed -- skipping email for Kamal Tiwari
+2026-09-16 16:11:53  INFO      
+Processing: Bhrigunath Chaurasia
+2026-09-16 16:11:53  INFO        Loading filtered report...
+2026-09-16 16:12:07  INFO        Identity prompt dismissed (attempt 1).
+2026-09-16 16:12:09  INFO        Identity prompt dismissed (attempt 2).
+2026-09-16 16:12:20  INFO        File menu not found. Trying ellipsis menu...
+2026-09-16 16:12:30  ERROR       Export failed: Locator.click: Timeout 10000ms exceeded.
+Call log:
+  - waiting for locator("[aria-label=\"More options\"], button[title=\"More options\"]").first
+    - locator resolved to <button role="menuitem" tri-icon-button="" aria-haspopup="true" aria-current="false" aria-expanded="false" aria-label="More options" _ngcontent-ng-c4146218820="" data-testid="navbar-label-item-more..." aria-labelledby="navbar-labelledbyMore..." class="navbar-item navbar-item-active-no-indicator ng-star-inserted">…</button>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="cdk-overlay-backdrop cdk-overlay-transparent-backdrop cdk-overlay-backdrop-showing"></div> from <div class="cdk-overlay-container">…</div> subtree intercepts pointer events
+    - retrying click action
+    - waiting 20ms
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="cdk-overlay-backdrop cdk-overlay-transparent-backdrop cdk-overlay-backdrop-showing"></div> from <div class="cdk-overlay-container">…</div> subtree intercepts pointer events
+    - retrying click action
+      - waiting 100ms
+    18 × waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <div class="cdk-overlay-backdrop cdk-overlay-transparent-backdrop cdk-overlay-backdrop-showing"></div> from <div class="cdk-overlay-container">…</div> subtree intercepts pointer events
+     - retrying click action
+       - waiting 500ms
+
+2026-09-16 16:12:30  INFO        Debug screenshot: debug_Bhrigunath Chaurasia.png
+2026-09-16 16:12:30  ERROR       Export failed -- skipping email for Bhrigunath Chaurasia
+2026-09-16 16:12:30  INFO      
+Processing: Ritesh Soni
+2026-09-16 16:12:30  INFO        Loading filtered report...
+2026-09-16 16:12:43  INFO        Identity prompt dismissed (attempt 1).
+2026-09-16 16:12:45  INFO        Identity prompt dismissed (attempt 2).
+2026-09-16 16:12:56  INFO        File menu not found. Trying ellipsis menu...
+2026-09-16 16:13:06  ERROR       Export failed: Locator.click: Timeout 10000ms exceeded.
+Call log:
+  - waiting for locator("[aria-label=\"More options\"], button[title=\"More options\"]").first
+    - locator resolved to <button role="menuitem" tri-icon-button="" aria-haspopup="true" aria-current="false" aria-expanded="false" aria-label="More options" _ngcontent-ng-c4146218820="" data-testid="navbar-label-item-more..." aria-labelledby="navbar-labelledbyMore..." class="navbar-item navbar-item-active-no-indicator ng-star-inserted">…</button>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="cdk-overlay-backdrop cdk-overlay-transparent-backdrop cdk-overlay-backdrop-showing"></div> from <div class="cdk-overlay-container">…</div> subtree intercepts pointer events
+    - retrying click action
+    - waiting 20ms
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="cdk-overlay-backdrop cdk-overlay-transparent-backdrop cdk-overlay-backdrop-showing"></div> from <div class="cdk-overlay-container">…</div> subtree intercepts pointer events
+    - retrying click action
+      - waiting 100ms
+    18 × waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <div class="cdk-overlay-backdrop cdk-overlay-transparent-backdrop cdk-overlay-backdrop-showing"></div> from <div class="cdk-overlay-container">…</div> subtree intercepts pointer events
+     - retrying click action
+       - waiting 500ms
+
+2026-09-16 16:13:06  INFO        Debug screenshot: debug_Ritesh Soni.png
+2026-09-16 16:13:06  ERROR       Export failed -- skipping email for Ritesh Soni
+2026-09-16 16:13:06  INFO      
+=======================================================
+2026-09-16 16:13:06  INFO        Done.  Sent: 0   Failed: 3
+2026-09-16 16:13:06  INFO      =======================================================
+2026-09-16 16:25:25  INFO      =======================================================
+2026-09-16 16:25:25  INFO        Power BI Report Automation
+2026-09-16 16:25:25  INFO        Running immediately (--now)
+2026-09-16 16:25:25  INFO      =======================================================
+2026-09-16 16:26:02  INFO      Loaded 3 AOM(s) from StoreMAster.xlsx
+2026-09-16 16:26:02  INFO        - Kamal Tiwari | filter: aomnorth1@kisna.com | send to: arshdeep.matharo@kisna.com
+2026-09-16 16:26:02  INFO        - Bhrigunath Chaurasia | filter: aomnorth3d@kisna.com | send to: pranav.falod@kisna.com
+2026-09-16 16:26:02  INFO        - Ritesh Soni | filter: aomnorth1b@kisna.com | send to: pragati.panhale@kisna.com
+2026-09-16 16:26:02  INFO      Browser started (headless). Logging into Power BI...
+2026-09-16 16:26:02  INFO        Navigating to Microsoft login page...
+2026-09-16 16:26:11  INFO        Email submitted.
+2026-09-16 16:26:13  INFO        Password submitted. Checking for MFA...
+2026-09-16 16:26:15  INFO        No MFA challenge detected.
+2026-09-16 16:26:16  INFO        'Stay signed in?' -- answered No.
+2026-09-16 16:26:16  INFO        Navigating to Power BI...
+2026-09-16 16:26:19  INFO        Logged in successfully.
+2026-09-16 16:26:19  INFO      Navigating to workspace "AutoEmail" -> report "Franchise DataSet"...
+2026-09-16 16:26:22  INFO        Looking for workspace "AutoEmail"...
+2026-09-16 16:26:32  INFO        Found workspace in sidebar.
+2026-09-16 16:26:32  INFO        Navigating to workspace directly...
+2026-09-16 16:26:36  INFO        Looking for report "Franchise DataSet"...
+2026-09-16 16:26:37  INFO        Navigating to report...
+2026-09-16 16:26:45  INFO        Identity prompt dismissed (attempt 1).
+2026-09-16 16:26:48  INFO        Identity prompt dismissed (attempt 2).
+2026-09-16 16:26:50  INFO        Report URL: https://app.powerbi.com/groups/df64deac-1436-446d-a5cf-f7f30103f7c5/reports/6aacdb66-1554-4930-84da-7b40588ecb22/3f7afe66b87d29e97c83
+2026-09-16 16:26:50  INFO      Report URL acquired: https://app.powerbi.com/groups/df64deac-1436-446d-a5cf-f7f30103f7c5/reports/6aacdb66-1554-4930-84da-7b40588ecb22/3f7afe66b87d29e97c83
+2026-09-16 16:26:50  INFO      
+Processing: Kamal Tiwari
+2026-09-16 16:26:50  INFO        Loading filtered report...
+2026-09-16 16:27:03  INFO        Identity prompt dismissed (attempt 1).
+2026-09-16 16:27:05  INFO        Identity prompt dismissed (attempt 2).
+2026-09-16 16:27:11  INFO        Clicking Export toolbar button...
+2026-09-16 16:27:12  INFO        Selecting PDF...
+2026-09-16 16:27:39  INFO        PDF saved: Kamal_Tiwari_16-Sep-2026.pdf
+2026-09-16 16:27:41  INFO        Email sent -> arshdeep.matharo@kisna.com
+2026-09-16 16:27:41  INFO        Email sent to arshdeep.matharo@kisna.com
+2026-09-16 16:27:41  INFO      
+Processing: Bhrigunath Chaurasia
+2026-09-16 16:27:41  INFO        Loading filtered report...
+2026-09-16 16:27:54  INFO        Identity prompt dismissed (attempt 1).
+2026-09-16 16:27:56  INFO        Identity prompt dismissed (attempt 2).
+2026-09-16 16:28:03  INFO        Clicking Export toolbar button...
+2026-09-16 16:28:04  INFO        Selecting PDF...
+2026-09-16 16:28:26  INFO        PDF saved: Bhrigunath_Chaurasia_16-Sep-2026.pdf
+2026-09-16 16:28:27  INFO        Email sent -> pranav.falod@kisna.com
+2026-09-16 16:28:27  INFO        Email sent to pranav.falod@kisna.com
+2026-09-16 16:28:27  INFO      
+Processing: Ritesh Soni
+2026-09-16 16:28:27  INFO        Loading filtered report...
+2026-09-16 16:28:42  INFO        Identity prompt dismissed (attempt 1).
+2026-09-16 16:28:44  INFO        Identity prompt dismissed (attempt 2).
+2026-09-16 16:28:51  INFO        Clicking Export toolbar button...
+2026-09-16 16:28:52  INFO        Selecting PDF...
+2026-09-16 16:29:19  INFO        PDF saved: Ritesh_Soni_16-Sep-2026.pdf
+2026-09-16 16:29:20  INFO        Email sent -> pragati.panhale@kisna.com
+2026-09-16 16:29:20  INFO        Email sent to pragati.panhale@kisna.com
+2026-09-16 16:29:20  INFO      
+=======================================================
+2026-09-16 16:29:20  INFO        Done.  Sent: 3   Failed: 0
+2026-09-16 16:29:20  INFO      =======================================================
+2026-09-16 17:19:13  INFO      =======================================================
+2026-09-16 17:19:13  INFO        Power BI Report Automation
+2026-09-16 17:19:13  INFO        Running immediately (--now)
+2026-09-16 17:19:13  INFO      =======================================================
+2026-09-16 17:19:47  INFO      Loaded 3 AOM(s) from StoreMAster.xlsx
+2026-09-16 17:19:47  INFO        - Kamal Tiwari | filter: aomnorth1@kisna.com | send to: arshdeep.matharo@kisna.com
+2026-09-16 17:19:47  INFO        - Bhrigunath Chaurasia | filter: aomnorth3d@kisna.com | send to: pranav.falod@kisna.com
+2026-09-16 17:19:47  INFO        - Ritesh Soni | filter: aomnorth1b@kisna.com | send to: pragati.panhale@kisna.com
+2026-09-16 17:19:50  INFO      Browser started (headless). Logging into Power BI...
+2026-09-16 17:19:50  INFO        Navigating to Microsoft login page...
+2026-09-16 17:20:00  INFO        Email submitted.
+2026-09-16 17:20:02  INFO        Password submitted. Checking for MFA...
+2026-09-16 17:20:05  INFO        No MFA challenge detected.
+2026-09-16 17:20:05  INFO        'Stay signed in?' -- answered No.
+2026-09-16 17:20:05  INFO        Navigating to Power BI...
+2026-09-16 17:20:11  INFO        Logged in successfully.
+2026-09-16 17:20:11  INFO      Navigating to workspace "AutoEmails" -> report "Franchise DataSet"...
+2026-09-16 17:20:12  INFO        Looking for workspace "AutoEmails"...
+2026-09-16 17:20:35  INFO        Navigating to workspace directly...
+2026-09-16 17:20:40  INFO        Looking for report "Franchise DataSet"...
+2026-09-16 17:20:43  INFO        Navigating to report...
+2026-09-16 17:20:55  INFO        Identity prompt dismissed (attempt 1).
+2026-09-16 17:20:57  INFO        Identity prompt dismissed (attempt 2).
+2026-09-16 17:20:59  INFO        Report URL: https://app.powerbi.com/groups/d5f0d52b-8c11-4092-9b88-d9cfab71c3fe/reports/91d645a5-6cae-45f8-b9c2-b29ad296f652/40867f7e388ce019a7a4
+2026-09-16 17:20:59  INFO      Report URL acquired: https://app.powerbi.com/groups/d5f0d52b-8c11-4092-9b88-d9cfab71c3fe/reports/91d645a5-6cae-45f8-b9c2-b29ad296f652/40867f7e388ce019a7a4
+2026-09-16 17:20:59  INFO      
+Processing: Kamal Tiwari
+2026-09-16 17:20:59  INFO        Filter URL: ...?filter=Store%20Master/AOM%20Mail%20Id eq 'aomnorth1%40kisna.com'
+2026-09-16 17:20:59  INFO        Loading filtered report...
+2026-09-16 17:21:14  INFO        Identity prompt dismissed (attempt 1).
+2026-09-16 17:21:16  INFO        Identity prompt dismissed (attempt 2).
+2026-09-16 17:21:21  INFO        Active URL confirms filter: yes
+2026-09-16 17:21:26  INFO        Clicking Export toolbar button...
+2026-09-16 17:21:27  INFO        Selecting PDF...
+2026-09-16 17:21:50  INFO        PDF saved: Kamal_Tiwari_16-Sep-2026.pdf
+2026-09-16 17:21:51  INFO        Email sent -> arshdeep.matharo@kisna.com
+2026-09-16 17:21:51  INFO        Email sent to arshdeep.matharo@kisna.com
+2026-09-16 17:21:51  INFO      
+Processing: Bhrigunath Chaurasia
+2026-09-16 17:21:51  INFO        Filter URL: ...?filter=Store%20Master/AOM%20Mail%20Id eq 'aomnorth3d%40kisna.com'
+2026-09-16 17:21:51  INFO        Loading filtered report...
+2026-09-16 17:22:07  INFO        Identity prompt dismissed (attempt 1).
+2026-09-16 17:22:09  INFO        Identity prompt dismissed (attempt 2).
+2026-09-16 17:22:14  INFO        Active URL confirms filter: yes
+2026-09-16 17:22:19  INFO        Clicking Export toolbar button...
+2026-09-16 17:22:20  INFO        Selecting PDF...
+2026-09-16 17:22:43  INFO        PDF saved: Bhrigunath_Chaurasia_16-Sep-2026.pdf
+2026-09-16 17:22:44  INFO        Email sent -> pranav.falod@kisna.com
+2026-09-16 17:22:44  INFO        Email sent to pranav.falod@kisna.com
+2026-09-16 17:22:44  INFO      
+Processing: Ritesh Soni
+2026-09-16 17:22:44  INFO        Filter URL: ...?filter=Store%20Master/AOM%20Mail%20Id eq 'aomnorth1b%40kisna.com'
+2026-09-16 17:22:44  INFO        Loading filtered report...
+2026-09-16 17:23:01  INFO        Identity prompt dismissed (attempt 1).
+2026-09-16 17:23:04  INFO        Identity prompt dismissed (attempt 2).
+2026-09-16 17:23:09  INFO        Active URL confirms filter: yes
+2026-09-16 17:23:14  INFO        Clicking Export toolbar button...
+2026-09-16 17:23:15  INFO        Selecting PDF...
+2026-09-16 17:23:39  INFO        PDF saved: Ritesh_Soni_16-Sep-2026.pdf
+2026-09-16 17:23:40  INFO        Email sent -> pragati.panhale@kisna.com
+2026-09-16 17:23:40  INFO        Email sent to pragati.panhale@kisna.com
+2026-09-16 17:23:40  INFO      
+=======================================================
+2026-09-16 17:23:40  INFO        Done.  Sent: 3   Failed: 0
+2026-09-16 17:23:40  INFO      =======================================================

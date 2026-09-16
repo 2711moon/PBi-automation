@@ -7,14 +7,14 @@ Usage:
 
 Flow:
     1. Wait until SEND_AT (skipped with --now)
-    2. Prompt for Power BI email + password in terminal
-    3. Log into Power BI (headless browser) -- handles MFA OTP in terminal
-    4. Discover the report URL by navigating workspace -> report
+    2. Prompt for Power BI admin email + password in terminal
+    3. Log into Power BI via headless browser — handles MFA in terminal
+    4. Capture Bearer token from intercepted API requests, then close browser
     5. For each AOM in StoreMAster.xlsx:
-       a. Open report filtered to that AOM
-       b. Export all pages as PDF
+       a. Call Power BI REST Export API with effectiveIdentity (RLS applied server-side)
+       b. Poll until PDF is ready, download it
        c. Email the PDF via Zoho SMTP
-    6. Clean up temp PDFs
+       d. Delete the local PDF
 """
 import os
 import sys
@@ -27,9 +27,10 @@ import openpyxl
 
 from config import (
     STOREMASTER, EXPORTS_DIR, LOG_FILE,
-    EMAIL_SUBJECT, EMAIL_BODY, SEND_AT
+    EMAIL_SUBJECT, EMAIL_BODY, SEND_AT,
+    PBI_WORKSPACE_NAME, PBI_REPORT_NAME,
 )
-from powerbi import PowerBIExporter
+from powerbi import PowerBIExporter   # PowerBIExporter = PowerBIClient alias
 from mailer import Mailer
 
 # == Logging ===================================================================
@@ -156,7 +157,7 @@ def main():
     for a in aoms:
         log.info(f"  - {a['name']} | filter: {a['filter_email']} | send to: {a['delivery_email']}")
 
-    # Step 4 & 5: Log in, discover URL, export, email
+    # Step 4 & 5: Authenticate, export via REST API with effectiveIdentity, email
     mailer        = Mailer()
     success, fail = 0, 0
 
