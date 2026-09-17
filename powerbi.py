@@ -1,27 +1,21 @@
 """
-powerbi.py - Power BI report automation via REST API with effectiveIdentity.
+powerbi.py  —  Option B: browser-native API calls via Playwright page.evaluate().
 
-AUTHENTICATION : Playwright headless browser (handles MFA / SSO).
-                 After login the Bearer token is captured from intercepted API requests.
-EXPORT         : Power BI REST Export API  with  effectiveIdentity.
-                 The server applies RLS for the given AOM email address, so the PDF
-                 contains ONLY that AOM's stores — no admin bypass, no URL-filter trick.
+AUTHENTICATION : Playwright headless browser (email + password, already working).
+EXPORT         : ALL Power BI API calls (ExportTo, poll, download) are made
+                 via JavaScript fetch() INSIDE the browser session.
+                 No token extracted to Python. No Azure AD app needed.
+                 effectiveIdentity applied server-side → correct RLS per AOM.
 
-Flow
-----
-1. Open a headless Chromium, log in as admin (MFA handled in terminal if needed).
-2. Navigate to Power BI home; intercept Bearer token from requests to api.powerbi.com.
-3. Close the browser.
-4. Fetch the Dataset ID linked to the report (one REST call).
-5. For each AOM:
-     POST ExportTo with effectiveIdentity {username, roles, datasets}
-     Poll until status == Succeeded
-     Download the PDF
+Diagnostic:
+  If the very first API call (get dataset ID) returns 401 even from the browser,
+  the log will say "TOKEN SCOPE ERROR" and tell you Azure AD app registration
+  is the only remaining fix. That result in 30 seconds — no wasted time.
 """
 import os
+import base64
 import time
 import logging
-import requests
 from typing import Optional
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
@@ -32,122 +26,101 @@ from config import (
 
 log = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
 NAV_TIMEOUT    = 60_000   # ms  — browser navigation
-TOKEN_WAIT_S   = 40       # sec — wait for Bearer token
+EVAL_TIMEOUT   = 120_000  # ms  — JS evaluate (long for PDF download)
 POLL_INTERVAL  = 6        # sec — between export-status polls
-EXPORT_TIMEOUT = 300      # sec — give up if export takes too long
+EXPORT_TIMEOUT = 300      # sec — give up if export takes longer
 PBI_API        = "https://api.powerbi.com/v1.0/myorg"
+
+# JavaScript that finds the Power BI Bearer token in localStorage/sessionStorage
+_JS_GET_TOKEN = """
+    (() => {
+        for (const store of [localStorage, sessionStorage]) {
+            for (let i = 0; i < store.length; i++) {
+                const key = store.key(i) || '';
+                try {
+                    const item = JSON.parse(store.getItem(key));
+                    if (item && item.secret) {
+                        const t = (item.target || '').toLowerCase();
+                        if (t.includes('powerbi') || t.includes('analysis.windows.net')) {
+                            return item.secret;
+                        }
+                    }
+                } catch(e) {}
+            }
+        }
+        return null;
+    })()
+"""
 
 
 class PowerBIClient:
     """
-    Context manager.
-
-    __enter__  logs in via headless browser, grabs the Bearer token,
-               closes the browser, then fetches the dataset ID.
-    __exit__   nothing to clean up (token is in memory only).
+    Context manager.  Browser stays open for the entire run so all
+    API calls share the same authenticated session.
     """
 
     def __init__(self, email: str, password: str):
         self.email       = email
         self.password    = password
-        self._token:      Optional[str] = None
+        self._pw         = None
+        self._browser    = None
+        self._page       = None
         self._dataset_id: Optional[str] = None
 
-    # ------------------------------------------------------------------ setup
+    # ------------------------------------------------------------------ lifecycle
 
     def __enter__(self) -> "PowerBIClient":
-        log.info("Authenticating with Power BI (headless browser)...")
-        self._token = self._login_and_capture_token()
-        log.info("Bearer token acquired. Browser closed.")
-        self._dataset_id = self._fetch_dataset_id()
-        log.info(f"Dataset ID confirmed: {self._dataset_id}")
+        log.info("Launching headless browser...")
+        self._pw      = sync_playwright().start()
+        self._browser = self._pw.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+            ],
+        )
+        ctx = self._browser.new_context(
+            viewport={"width": 1920, "height": 1080},
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/127.0.0.0 Safari/537.36"
+            ),
+        )
+        self._page = ctx.new_page()
+        self._page.set_default_timeout(EVAL_TIMEOUT)
+
+        self._do_login(self._page)
+
+        log.info("  Navigating to Power BI home (loading session tokens)...")
+        self._page.goto(
+            "https://app.powerbi.com/",
+            timeout=NAV_TIMEOUT,
+            wait_until="domcontentloaded",
+        )
+        self._page.wait_for_timeout(6_000)   # let MSAL.js cache tokens
+
+        log.info("  Fetching dataset ID via browser fetch()...")
+        self._dataset_id = self._get_dataset_id()
+        log.info(f"  Dataset ID: {self._dataset_id}")
         return self
 
     def __exit__(self, *args) -> None:
-        pass   # token lives only in memory — nothing to close
+        try:
+            if self._browser:
+                self._browser.close()
+            if self._pw:
+                self._pw.stop()
+        except Exception:
+            pass
+        log.info("Browser closed.")
 
-    # ------------------------------------------------------------------- auth
-
-    def _login_and_capture_token(self) -> str:
-        """
-        Log in via headless Chromium and intercept the Bearer token that
-        Power BI sends to api.powerbi.com when the home page loads.
-        """
-        captured = {"token": None}
-
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(
-                headless=True,
-                args=[
-                    "--disable-blink-features=AutomationControlled",
-                    "--no-sandbox",
-                    "--disable-dev-shm-usage",
-                ],
-            )
-            ctx = browser.new_context(
-                viewport={"width": 1920, "height": 1080},
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/127.0.0.0 Safari/537.36"
-                ),
-            )
-            page = ctx.new_page()
-
-            # Intercept every outgoing request and grab the first Bearer token
-            # that goes to api.powerbi.com
-            def on_request(request):
-                if captured["token"]:
-                    return
-                if "api.powerbi.com" not in request.url:
-                    return
-                auth = request.headers.get("authorization", "")
-                if auth.startswith("Bearer "):
-                    captured["token"] = auth[7:]
-                    log.info("  Bearer token captured from API request.")
-
-            page.on("request", on_request)
-
-            # ----- login sequence (same as previous working version) ------
-            self._do_login(page)
-
-            # PBI home triggers multiple api.powerbi.com calls — token appears here
-            log.info("  Navigating to Power BI home to capture token...")
-            page.goto(
-                "https://app.powerbi.com/",
-                timeout=NAV_TIMEOUT,
-                wait_until="domcontentloaded",
-            )
-            deadline = time.time() + TOKEN_WAIT_S
-            while not captured["token"] and time.time() < deadline:
-                page.wait_for_timeout(1_000)
-
-            # Fallback: go directly to the report to force an API call
-            if not captured["token"]:
-                log.info("  Token not yet seen — navigating to report...")
-                page.goto(
-                    f"https://app.powerbi.com/groups/{PBI_GROUP_ID}/reports/{PBI_REPORT_ID}",
-                    timeout=NAV_TIMEOUT,
-                    wait_until="domcontentloaded",
-                )
-                deadline = time.time() + TOKEN_WAIT_S
-                while not captured["token"] and time.time() < deadline:
-                    page.wait_for_timeout(1_000)
-
-            browser.close()
-
-        if not captured["token"]:
-            raise RuntimeError(
-                "Bearer token was not captured. "
-                "Power BI did not make any API requests within the expected window."
-            )
-        return captured["token"]
+    # ------------------------------------------------------------------ login
 
     def _do_login(self, page) -> None:
-        """Navigate Microsoft login, fill credentials, handle MFA, skip Stay-signed-in."""
-        log.info("  Navigating to Microsoft login page...")
+        log.info("  Navigating to Microsoft login...")
         page.goto(
             "https://login.microsoftonline.com/",
             timeout=NAV_TIMEOUT,
@@ -155,7 +128,6 @@ class PowerBIClient:
         )
         page.wait_for_timeout(1_500)
 
-        # Step 1 — email
         for sel in ['input[name="loginfmt"]', 'input[type="email"]', "#i0116"]:
             try:
                 page.wait_for_selector(sel, timeout=10_000)
@@ -167,54 +139,47 @@ class PowerBIClient:
                 continue
         page.wait_for_timeout(2_000)
 
-        # Step 2 — password
         for sel in ['input[name="passwd"]', 'input[type="password"]', "#i0118"]:
             try:
                 page.wait_for_selector(sel, timeout=10_000)
                 page.fill(sel, self.password)
                 page.keyboard.press("Enter")
-                log.info("  Password submitted. Checking for MFA...")
+                log.info("  Password submitted.")
                 break
             except PWTimeout:
                 continue
         page.wait_for_timeout(2_000)
 
-        # Step 3 — MFA (if any)
         self._handle_mfa(page)
 
-        # Step 4 — "Stay signed in?" → always No
         try:
             page.wait_for_selector("#idBtn_Back", timeout=8_000)
             page.click("#idBtn_Back")
-            log.info("  'Stay signed in?' -- answered No.")
+            log.info("  'Stay signed in?' -- No.")
         except PWTimeout:
             pass
 
         log.info("  Login complete.")
 
     def _handle_mfa(self, page) -> None:
-        """Handle TOTP or authenticator-app push MFA if it appears."""
-        # TOTP / SMS code input
         try:
             page.wait_for_selector(
                 'input[name="otc"], #idTxtBx_SAOTCC_OTC', timeout=8_000
             )
-            otp = input("\n  MFA code required — enter it here: ").strip()
+            otp = input("\n  MFA code required: ").strip()
             page.fill('input[name="otc"], #idTxtBx_SAOTCC_OTC', otp)
             page.keyboard.press("Enter")
             page.wait_for_timeout(3_000)
-            log.info("  MFA code submitted.")
             return
         except PWTimeout:
             pass
 
-        # Authenticator app push notification
         try:
             page.wait_for_selector(
                 '[data-value="PhoneAppNotification"], #idDiv_SAOTCS_Section',
                 timeout=5_000,
             )
-            log.info("  Authenticator push sent — approve on your phone (waiting 20 s)...")
+            log.info("  Authenticator push sent — approve on phone (20s)...")
             page.wait_for_timeout(20_000)
             return
         except PWTimeout:
@@ -222,41 +187,149 @@ class PowerBIClient:
 
         log.info("  No MFA challenge detected.")
 
-    # --------------------------------------------------------------- REST API
+    # ------------------------------------------------------------------ browser API helpers
 
-    def _api_headers(self) -> dict:
-        return {
-            "Authorization": f"Bearer {self._token}",
-            "Content-Type":  "application/json",
-        }
+    def _browser_fetch(self, method: str, url: str, body: dict = None) -> dict:
+        """
+        Make an authenticated REST API call from inside the browser JS context.
+        Returns { status: <int>, data: <dict> } or { __error: <str> }.
+        """
+        result = self._page.evaluate(
+            """async (p) => {
+                // Find Power BI Bearer token in browser storage
+                let token = null;
+                for (const store of [localStorage, sessionStorage]) {
+                    for (let i = 0; i < store.length; i++) {
+                        const key = store.key(i) || '';
+                        try {
+                            const item = JSON.parse(store.getItem(key));
+                            if (item && item.secret) {
+                                const t = (item.target || '').toLowerCase();
+                                if (t.includes('powerbi') ||
+                                    t.includes('analysis.windows.net')) {
+                                    token = item.secret;
+                                    break;
+                                }
+                            }
+                        } catch(e) {}
+                    }
+                    if (token) break;
+                }
 
-    def _fetch_dataset_id(self) -> str:
-        """GET report metadata to extract the dataset ID linked to this report."""
-        url  = f"{PBI_API}/groups/{PBI_GROUP_ID}/reports/{PBI_REPORT_ID}"
-        resp = requests.get(url, headers=self._api_headers(), timeout=30)
-        if resp.status_code == 401:
+                if (!token) return { __error: 'NO_TOKEN',
+                    detail: 'No Power BI token found in localStorage/sessionStorage' };
+
+                const opts = {
+                    method: p.method,
+                    headers: {
+                        'Authorization': 'Bearer ' + token,
+                        'Content-Type': 'application/json',
+                    },
+                };
+                if (p.body) opts.body = JSON.stringify(p.body);
+
+                try {
+                    const resp = await fetch(p.url, opts);
+                    const ct   = resp.headers.get('content-type') || '';
+                    const data = ct.includes('json')
+                        ? await resp.json()
+                        : { __text: await resp.text() };
+                    return { status: resp.status, data };
+                } catch(err) {
+                    return { __error: 'FETCH_ERROR', detail: String(err) };
+                }
+            }""",
+            {"method": method, "url": url, "body": body},
+        )
+        return result
+
+    def _browser_download(self, url: str) -> bytes:
+        """Download binary file from browser, return as Python bytes via base64."""
+        result = self._page.evaluate(
+            """async (p) => {
+                let token = null;
+                for (const store of [localStorage, sessionStorage]) {
+                    for (let i = 0; i < store.length; i++) {
+                        const key = store.key(i) || '';
+                        try {
+                            const item = JSON.parse(store.getItem(key));
+                            if (item && item.secret) {
+                                const t = (item.target || '').toLowerCase();
+                                if (t.includes('powerbi') ||
+                                    t.includes('analysis.windows.net')) {
+                                    token = item.secret;
+                                    break;
+                                }
+                            }
+                        } catch(e) {}
+                    }
+                    if (token) break;
+                }
+                if (!token) return { __error: 'NO_TOKEN' };
+
+                try {
+                    const resp = await fetch(p.url, {
+                        headers: { 'Authorization': 'Bearer ' + token }
+                    });
+                    if (!resp.ok) {
+                        return { __error: 'HTTP_' + resp.status,
+                                 detail: await resp.text() };
+                    }
+                    const blob = await resp.blob();
+                    return new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload  = () => resolve(
+                            { base64: reader.result.split(',')[1] }
+                        );
+                        reader.onerror = () => reject('FileReader error');
+                        reader.readAsDataURL(blob);
+                    });
+                } catch(err) {
+                    return { __error: 'FETCH_ERROR', detail: String(err) };
+                }
+            }""",
+            {"url": url},
+        )
+        if "__error" in result:
+            raise RuntimeError(f"Download failed: {result}")
+        return base64.b64decode(result["base64"])
+
+    # ------------------------------------------------------------------ dataset ID
+
+    def _get_dataset_id(self) -> str:
+        url    = f"{PBI_API}/groups/{PBI_GROUP_ID}/reports/{PBI_REPORT_ID}"
+        result = self._browser_fetch("GET", url)
+
+        if "__error" in result:
             raise RuntimeError(
-                "Bearer token rejected (401 Unauthorized). "
-                "The browser session may not have completed before the token was read."
+                f"Could not call Power BI API from browser: {result}\n"
+                "Check that the browser is on app.powerbi.com and logged in."
             )
-        resp.raise_for_status()
-        return resp.json()["datasetId"]
 
-    # ----------------------------------------------------------- per-AOM export
+        if result["status"] == 401:
+            raise RuntimeError(
+                "TOKEN SCOPE ERROR — API returned 401 even from inside the browser.\n"
+                "This means the localStorage token's audience does not match the\n"
+                "Power BI REST API. Azure AD app registration is required.\n"
+                "Admin guide: https://aad.portal.azure.com → App registrations\n"
+                f"Raw response: {result.get('data', '')}"
+            )
+
+        if result["status"] != 200:
+            raise RuntimeError(
+                f"GetReport failed: HTTP {result['status']} — {result.get('data', '')}"
+            )
+
+        return result["data"]["datasetId"]
+
+    # ------------------------------------------------------------------ per-AOM export
 
     def export_report(
         self, filter_email: str, aom_name: str, date_str: str
     ) -> Optional[str]:
         """
-        Export the report for one AOM via the REST API with effectiveIdentity.
-
-        filter_email  the AOM's Power BI UPN (e.g. aomnorth1@kisna.com).
-                      Passed as the effectiveIdentity username so the server
-                      applies RLS and includes only that AOM's stores.
-        aom_name      used for the PDF filename only.
-        date_str      used for the PDF filename only.
-
-        Returns the local path to the saved PDF, or None on failure.
+        Export report for one AOM via browser fetch() with effectiveIdentity.
+        Returns local PDF path or None on failure.
         """
         os.makedirs(EXPORTS_DIR, exist_ok=True)
         safe  = "".join(c if c.isalnum() or c in " _-" else "_" for c in aom_name)
@@ -264,53 +337,64 @@ class PowerBIClient:
         fpath = os.path.join(EXPORTS_DIR, fname)
 
         try:
-            log.info(f"  Requesting export (effectiveIdentity: {filter_email})...")
+            log.info(f"  Starting export (effectiveIdentity: {filter_email})...")
             export_id = self._start_export(filter_email)
 
-            log.info("  Waiting for Power BI to generate the PDF...")
+            log.info("  Waiting for Power BI to render PDF...")
             self._poll_export(export_id)
 
-            log.info("  Downloading PDF...")
-            self._download(export_id, fpath)
+            log.info("  Downloading PDF via browser...")
+            pdf_bytes = self._browser_download(
+                f"{PBI_API}/groups/{PBI_GROUP_ID}"
+                f"/reports/{PBI_REPORT_ID}/exports/{export_id}/file"
+            )
 
-            log.info(f"  PDF saved: {fname}")
+            with open(fpath, "wb") as fh:
+                fh.write(pdf_bytes)
+
+            log.info(f"  Saved: {fname}  ({len(pdf_bytes):,} bytes)")
             return fpath
 
         except Exception as exc:
-            log.error(f"  Export failed: {exc}")
+            log.error(f"  Export failed for {aom_name}: {exc}")
             return None
 
     def _start_export(self, filter_email: str) -> str:
-        """POST to ExportTo with effectiveIdentity; return the export job ID."""
-        url  = f"{PBI_API}/groups/{PBI_GROUP_ID}/reports/{PBI_REPORT_ID}/ExportTo"
-        body = {
+        url    = f"{PBI_API}/groups/{PBI_GROUP_ID}/reports/{PBI_REPORT_ID}/ExportTo"
+        body   = {
             "format": "PDF",
             "powerBIReportConfiguration": {
-                "identities": [
-                    {
-                        "username": filter_email,
-                        "roles":    [PBI_RLS_ROLE],
-                        "datasets": [self._dataset_id],
-                    }
-                ]
+                "identities": [{
+                    "username": filter_email,
+                    "roles":    [PBI_RLS_ROLE],
+                    "datasets": [self._dataset_id],
+                }]
             },
         }
-        resp = requests.post(url, headers=self._api_headers(), json=body, timeout=30)
-        if resp.status_code not in (200, 202):
+        result = self._browser_fetch("POST", url, body)
+
+        if result.get("status") not in (200, 202):
             raise RuntimeError(
-                f"ExportTo API failed: HTTP {resp.status_code}\n{resp.text[:500]}"
+                f"ExportTo failed: HTTP {result.get('status')} — {result.get('data', '')}"
             )
-        return resp.json()["id"]
+        return result["data"]["id"]
 
     def _poll_export(self, export_id: str) -> None:
-        """Poll export status until Succeeded, Failed, or timeout."""
-        url      = f"{PBI_API}/groups/{PBI_GROUP_ID}/reports/{PBI_REPORT_ID}/exports/{export_id}"
+        url      = (
+            f"{PBI_API}/groups/{PBI_GROUP_ID}"
+            f"/reports/{PBI_REPORT_ID}/exports/{export_id}"
+        )
         deadline = time.time() + EXPORT_TIMEOUT
 
         while time.time() < deadline:
-            resp = requests.get(url, headers=self._api_headers(), timeout=30)
-            resp.raise_for_status()
-            data   = resp.json()
+            result = self._browser_fetch("GET", url)
+
+            if result.get("status") != 200:
+                raise RuntimeError(
+                    f"Poll failed: HTTP {result.get('status')} — {result.get('data', '')}"
+                )
+
+            data   = result["data"]
             status = data.get("status", "Unknown")
             pct    = data.get("percentComplete", 0)
 
@@ -327,22 +411,8 @@ class PowerBIClient:
             log.info(f"  ... {status} ({pct}%)")
             time.sleep(POLL_INTERVAL)
 
-        raise TimeoutError(
-            f"Export did not finish within {EXPORT_TIMEOUT} seconds."
-        )
-
-    def _download(self, export_id: str, fpath: str) -> None:
-        """Stream-download the completed export file to fpath."""
-        url  = f"{PBI_API}/groups/{PBI_GROUP_ID}/reports/{PBI_REPORT_ID}/exports/{export_id}/file"
-        resp = requests.get(
-            url, headers=self._api_headers(), timeout=120, stream=True
-        )
-        resp.raise_for_status()
-        with open(fpath, "wb") as fh:
-            for chunk in resp.iter_content(chunk_size=8_192):
-                fh.write(chunk)
+        raise TimeoutError(f"Export timed out after {EXPORT_TIMEOUT}s.")
 
 
-# ---------------------------------------------------------------------------
-# Alias so main.py import ( from powerbi import PowerBIExporter ) keeps working
+# Alias — keeps main.py import unchanged
 PowerBIExporter = PowerBIClient

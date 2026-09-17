@@ -345,3 +345,109 @@ Processing: Ritesh Soni
 =======================================================
 2026-09-16 17:23:40  INFO        Done.  Sent: 3   Failed: 0
 2026-09-16 17:23:40  INFO      =======================================================
+2026-09-16 18:00:35  INFO      =======================================================
+2026-09-16 18:00:35  INFO        Power BI Report Automation
+2026-09-16 18:00:35  INFO        Running immediately (--now)
+2026-09-16 18:00:35  INFO      =======================================================
+2026-09-16 18:01:00  INFO      Loaded 3 AOM(s) from StoreMAster.xlsx
+2026-09-16 18:01:00  INFO        - Kamal Tiwari | filter: aomnorth1@kisna.com | send to: arshdeep.matharo@kisna.com
+2026-09-16 18:01:00  INFO        - Bhrigunath Chaurasia | filter: aomnorth3d@kisna.com | send to: pranav.falod@kisna.com
+2026-09-16 18:01:00  INFO        - Ritesh Soni | filter: aomnorth1b@kisna.com | send to: pragati.panhale@kisna.com
+2026-09-16 18:01:00  INFO      Authenticating with Power BI (headless browser)...
+2026-09-16 18:01:01  INFO        Navigating to Microsoft login page...
+2026-09-16 18:01:06  INFO        Email submitted.
+2026-09-16 18:01:08  INFO        Password submitted. Checking for MFA...
+2026-09-16 18:01:23  INFO        No MFA challenge detected.
+2026-09-16 18:01:23  INFO        'Stay signed in?' -- answered No.
+2026-09-16 18:01:23  INFO        Login complete.
+2026-09-16 18:01:23  INFO        Navigating to Power BI home to capture token...
+2026-09-16 18:01:26  INFO        Bearer token captured from API request.
+2026-09-16 18:01:27  INFO      Bearer token acquired. Browser closed.
+2026-09-16 18:20:41  INFO      =======================================================
+2026-09-16 18:20:41  INFO        Power BI Report Automation
+2026-09-16 18:20:41  INFO        Running immediately (--now)
+2026-09-16 18:20:41  INFO      =======================================================
+2026-09-16 18:20:49  INFO      Loaded 3 AOM(s) from StoreMAster.xlsx
+2026-09-16 18:20:49  INFO        - Kamal Tiwari | filter: aomnorth1@kisna.com | send to: arshdeep.matharo@kisna.com
+2026-09-16 18:20:49  INFO        - Bhrigunath Chaurasia | filter: aomnorth3d@kisna.com | send to: pranav.falod@kisna.com
+2026-09-16 18:20:49  INFO        - Ritesh Soni | filter: aomnorth1b@kisna.com | send to: pragati.panhale@kisna.com
+2026-09-16 18:20:49  INFO      Authenticating with Power BI (headless browser)...
+2026-09-16 18:20:51  INFO        Navigating to Microsoft login page...
+2026-09-16 18:20:56  INFO        Email submitted.
+2026-09-16 18:20:58  INFO        Password submitted. Checking for MFA...
+2026-09-16 18:21:13  INFO        No MFA challenge detected.
+2026-09-16 18:21:13  INFO        'Stay signed in?' -- answered No.
+2026-09-16 18:21:13  INFO        Login complete.
+2026-09-16 18:21:13  INFO        Navigating to workspace to capture API token...
+2026-09-16 18:21:55  INFO        Token not yet seen — trying Power BI home...
+2026-09-16 18:25:31  INFO      =======================================================
+2026-09-16 18:25:31  INFO        Power BI Report Automation
+2026-09-16 18:25:31  INFO        Running immediately (--now)
+2026-09-16 18:25:31  INFO      =======================================================
+2026-09-16 18:25:49  INFO      Loaded 3 AOM(s) from StoreMAster.xlsx
+2026-09-16 18:25:49  INFO        - Kamal Tiwari | filter: aomnorth1@kisna.com | send to: arshdeep.matharo@kisna.com
+2026-09-16 18:25:49  INFO        - Bhrigunath Chaurasia | filter: aomnorth3d@kisna.com | send to: pranav.falod@kisna.com
+2026-09-16 18:25:49  INFO        - Ritesh Soni | filter: aomnorth1b@kisna.com | send to: pragati.panhale@kisna.com
+2026-09-16 18:25:49  INFO      Authenticating with Power BI (headless browser)...
+2026-09-16 18:25:49  INFO        Navigating to Microsoft login page...
+2026-09-16 18:25:51  INFO        Email submitted.
+2026-09-16 18:25:53  INFO        Password submitted. Checking for MFA...
+2026-09-16 18:26:08  INFO        No MFA challenge detected.
+2026-09-16 18:26:09  INFO        'Stay signed in?' -- answered No.
+2026-09-16 18:26:09  INFO        Login complete.
+2026-09-16 18:26:09  INFO        Navigating to Power BI home for token caching...
+2026-09-16 18:26:15  INFO        Reading token from browser localStorage...
+2026-09-16 18:26:17  INFO        Bearer token extracted from browser localStorage.
+2026-09-16 18:26:17  INFO      Bearer token acquired. Browser closed.
+2026-09-17 09:36:58  INFO      =======================================================
+2026-09-17 09:36:58  INFO        Power BI Report Automation
+2026-09-17 09:36:58  INFO        Running immediately (--now)
+2026-09-17 09:36:58  INFO      =======================================================
+2026-09-17 09:37:26  INFO      =======================================================
+2026-09-17 09:37:26  INFO        Power BI Report Automation
+2026-09-17 09:37:26  INFO        Running immediately (--now)
+2026-09-17 09:37:26  INFO      =======================================================
+2026-09-17 09:37:36  INFO      Loaded 3 AOM(s) from StoreMAster.xlsx
+2026-09-17 09:37:36  INFO        - Kamal Tiwari | filter: aomnorth1@kisna.com | send to: arshdeep.matharo@kisna.com
+2026-09-17 09:37:36  INFO        - Bhrigunath Chaurasia | filter: aomnorth3d@kisna.com | send to: pranav.falod@kisna.com
+2026-09-17 09:37:36  INFO        - Ritesh Soni | filter: aomnorth1b@kisna.com | send to: pragati.panhale@kisna.com
+2026-09-17 09:37:36  INFO      Authenticating with Power BI (headless browser)...
+2026-09-17 09:37:36  INFO        Requesting token via ROPC (direct credential exchange)...
+2026-09-17 09:37:39  WARNING     ROPC: invalid_grant — AADSTS50126: Error validating credentials due to invalid username or password. Trace ID: 7af58fe5-2294-4ee2-8c1e-1317a3b85700 Correlation ID: e266cafc-4476-4a52-902f-c6ef2f6b7552 Timestamp: 2026-09-17
+2026-09-17 09:37:39  INFO        ROPC failed — falling back to browser localStorage...
+2026-09-17 09:37:44  INFO        Navigating to Microsoft login page...
+2026-09-17 09:37:51  INFO        Email submitted.
+2026-09-17 09:37:53  INFO        Password submitted. Checking for MFA...
+2026-09-17 09:38:08  INFO        No MFA challenge detected.
+2026-09-17 09:38:08  INFO        'Stay signed in?' -- answered No.
+2026-09-17 09:38:08  INFO        Login complete.
+2026-09-17 09:38:08  INFO        Navigating to Power BI home (waiting for MSAL.js token cache)...
+2026-09-17 09:38:19  WARNING     No AccessToken with target='analysis.windows.net/powerbi/api' found in localStorage. See [localStorage] lines above.
+2026-09-17 09:47:00  INFO      =======================================================
+2026-09-17 09:47:00  INFO        Power BI Report Automation
+2026-09-17 09:47:00  INFO        Running immediately (--now)
+2026-09-17 09:47:00  INFO      =======================================================
+2026-09-17 09:47:10  INFO      Loaded 3 AOM(s) from StoreMAster.xlsx
+2026-09-17 09:47:10  INFO        - Kamal Tiwari | filter: aomnorth1@kisna.com | send to: arshdeep.matharo@kisna.com
+2026-09-17 09:47:10  INFO        - Bhrigunath Chaurasia | filter: aomnorth3d@kisna.com | send to: pranav.falod@kisna.com
+2026-09-17 09:47:10  INFO        - Ritesh Soni | filter: aomnorth1b@kisna.com | send to: pragati.panhale@kisna.com
+2026-09-17 09:47:10  INFO      Obtaining Power BI Bearer token via MSAL...
+2026-09-17 09:47:11  INFO        No cached token — starting device code flow...
+2026-09-17 09:47:12  INFO        Waiting for you to authenticate in the browser (up to 5 min)...
+2026-09-17 10:36:31  INFO      =======================================================
+2026-09-17 10:36:31  INFO        Power BI Report Automation
+2026-09-17 10:36:31  INFO        Running immediately (--now)
+2026-09-17 10:36:31  INFO      =======================================================
+2026-09-17 10:36:45  INFO      Loaded 3 AOM(s) from StoreMAster.xlsx
+2026-09-17 10:36:45  INFO        - Kamal Tiwari | filter: aomnorth1@kisna.com | send to: arshdeep.matharo@kisna.com
+2026-09-17 10:36:45  INFO        - Bhrigunath Chaurasia | filter: aomnorth3d@kisna.com | send to: pranav.falod@kisna.com
+2026-09-17 10:36:45  INFO        - Ritesh Soni | filter: aomnorth1b@kisna.com | send to: pragati.panhale@kisna.com
+2026-09-17 10:36:45  INFO      Launching headless browser...
+2026-09-17 10:36:46  INFO        Navigating to Microsoft login...
+2026-09-17 10:36:57  INFO        Email submitted.
+2026-09-17 10:36:59  INFO        Password submitted.
+2026-09-17 10:37:14  INFO        No MFA challenge detected.
+2026-09-17 10:37:14  INFO        'Stay signed in?' -- No.
+2026-09-17 10:37:14  INFO        Login complete.
+2026-09-17 10:37:14  INFO        Navigating to Power BI home (loading session tokens)...
+2026-09-17 10:37:25  INFO        Fetching dataset ID via browser fetch()...

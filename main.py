@@ -75,7 +75,7 @@ def wait_until_send_time():
 
 
 def prompt_credentials():
-    """Ask for Power BI email and password in the terminal."""
+    """Ask for Power BI admin email and password."""
     print()
     print("=" * 55)
     print("  Power BI Login")
