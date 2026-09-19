@@ -345,3 +345,724 @@ Processing: Ritesh Soni
 =======================================================
 2026-09-16 17:23:40  INFO        Done.  Sent: 3   Failed: 0
 2026-09-16 17:23:40  INFO      =======================================================
+2026-09-17 16:57:39  INFO      =======================================================
+2026-09-17 16:57:39  INFO        Power BI Report Automation
+2026-09-17 16:57:39  INFO        Running immediately (--now)
+2026-09-17 16:57:39  INFO      =======================================================
+2026-09-17 16:58:01  INFO      Loaded 3 AOM(s) from StoreMAster.xlsx
+2026-09-17 16:58:01  INFO        - Kamal Tiwari | filter: aomnorth1@kisna.com | send to: arshdeep.matharo@kisna.com
+2026-09-17 16:58:01  INFO        - Bhrigunath Chaurasia | filter: aomnorth3d@kisna.com | send to: pranav.falod@kisna.com
+2026-09-17 16:58:01  INFO        - Ritesh Soni | filter: aomnorth1b@kisna.com | send to: pragati.panhale@kisna.com
+2026-09-17 16:58:02  INFO      Browser started (headless). Logging into Power BI...
+2026-09-17 16:58:02  INFO        Navigating to Microsoft login page...
+2026-09-17 16:58:11  INFO        Email submitted.
+2026-09-17 16:58:14  INFO        Password submitted. Checking for MFA...
+2026-09-17 16:58:16  INFO        No MFA challenge detected.
+2026-09-17 16:58:17  INFO        'Stay signed in?' -- answered No.
+2026-09-17 16:58:17  INFO        Navigating to Power BI...
+2026-09-17 16:58:23  INFO        Logged in successfully.
+2026-09-17 16:58:23  INFO      Navigating to workspace "AutoEmails" -> report "Franchise DataSet"...
+2026-09-17 16:58:24  INFO        Looking for workspace "AutoEmails"...
+2026-09-17 16:58:38  INFO        Found workspace in sidebar.
+2026-09-17 16:58:38  INFO        Navigating to workspace directly...
+2026-09-17 16:58:44  INFO        Looking for report "Franchise DataSet"...
+2026-09-17 16:58:45  INFO        Navigating to report...
+2026-09-17 16:58:55  INFO        Identity prompt dismissed (attempt 1).
+2026-09-17 16:58:57  INFO        Identity prompt dismissed (attempt 2).
+2026-09-17 16:58:59  INFO        Report URL: https://app.powerbi.com/groups/d5f0d52b-8c11-4092-9b88-d9cfab71c3fe/reports/91d645a5-6cae-45f8-b9c2-b29ad296f652/40867f7e388ce019a7a4
+2026-09-17 16:58:59  INFO      Report URL acquired: https://app.powerbi.com/groups/d5f0d52b-8c11-4092-9b88-d9cfab71c3fe/reports/91d645a5-6cae-45f8-b9c2-b29ad296f652/40867f7e388ce019a7a4
+2026-09-17 16:58:59  INFO      
+Processing: Kamal Tiwari
+2026-09-17 16:58:59  INFO        Filter URL: ...?filter=Store_x0020_Master/AOM_x0020_Mail_x0020_Id eq 'aomnorth1@kisna.com'
+2026-09-17 16:58:59  INFO        Loading filtered report...
+2026-09-17 16:59:14  INFO        Identity prompt dismissed (attempt 1).
+2026-09-17 16:59:17  INFO        Identity prompt dismissed (attempt 2).
+2026-09-17 16:59:22  INFO        Active URL confirms filter: yes
+2026-09-17 16:59:31  INFO        Clicking Export toolbar button...
+2026-09-17 16:59:33  INFO        Selecting PDF...
+2026-09-17 16:59:59  INFO        PDF saved: Kamal_Tiwari_17-Sep-2026.pdf
+2026-09-17 17:00:02  INFO        Email sent -> arshdeep.matharo@kisna.com
+2026-09-17 17:00:02  INFO        Email sent to arshdeep.matharo@kisna.com
+2026-09-17 17:00:02  INFO      
+Processing: Bhrigunath Chaurasia
+2026-09-17 17:00:02  INFO        Filter URL: ...?filter=Store_x0020_Master/AOM_x0020_Mail_x0020_Id eq 'aomnorth3d@kisna.com'
+2026-09-17 17:00:02  INFO        Loading filtered report...
+2026-09-17 17:00:19  INFO        Identity prompt dismissed (attempt 1).
+2026-09-17 17:00:21  INFO        Identity prompt dismissed (attempt 2).
+2026-09-17 17:00:26  INFO        Active URL confirms filter: yes
+2026-09-17 17:00:30  INFO        Clicking Export toolbar button...
+2026-09-17 17:00:31  INFO        Selecting PDF...
+2026-09-17 17:00:54  INFO        PDF saved: Bhrigunath_Chaurasia_17-Sep-2026.pdf
+2026-09-17 17:00:55  INFO        Email sent -> pranav.falod@kisna.com
+2026-09-17 17:00:55  INFO        Email sent to pranav.falod@kisna.com
+2026-09-17 17:00:55  INFO      
+Processing: Ritesh Soni
+2026-09-17 17:00:55  INFO        Filter URL: ...?filter=Store_x0020_Master/AOM_x0020_Mail_x0020_Id eq 'aomnorth1b@kisna.com'
+2026-09-17 17:00:55  INFO        Loading filtered report...
+2026-09-17 17:01:09  INFO        Identity prompt dismissed (attempt 1).
+2026-09-17 17:01:12  INFO        Identity prompt dismissed (attempt 2).
+2026-09-17 17:01:17  INFO        Active URL confirms filter: yes
+2026-09-17 17:01:21  INFO        Clicking Export toolbar button...
+2026-09-17 17:01:22  INFO        Selecting PDF...
+2026-09-17 17:01:45  INFO        PDF saved: Ritesh_Soni_17-Sep-2026.pdf
+2026-09-17 17:01:46  INFO        Email sent -> pragati.panhale@kisna.com
+2026-09-17 17:01:46  INFO        Email sent to pragati.panhale@kisna.com
+2026-09-17 17:01:46  INFO      
+=======================================================
+2026-09-17 17:01:46  INFO        Done.  Sent: 3   Failed: 0
+2026-09-17 17:01:46  INFO      =======================================================
+2026-09-18 16:57:48  INFO      =======================================================
+2026-09-18 16:57:48  INFO        Power BI Report Automation
+2026-09-18 16:57:48  INFO        Running immediately (--now)
+2026-09-18 16:57:48  INFO      =======================================================
+2026-09-18 16:58:08  INFO      Loaded 3 AOM(s) from StoreMAster.xlsx
+2026-09-18 16:58:08  INFO        - Kamal Tiwari | filter: aomnorth1@kisna.com | send to: arshdeep.matharo@kisna.com
+2026-09-18 16:58:08  INFO        - Bhrigunath Chaurasia | filter: aomnorth3d@kisna.com | send to: pranav.falod@kisna.com
+2026-09-18 16:58:08  INFO        - Ritesh Soni | filter: aomnorth1b@kisna.com | send to: pragati.panhale@kisna.com
+2026-09-18 16:59:03  INFO      Browser started (headless). Logging into Power BI...
+2026-09-18 16:59:03  INFO        Navigating to Microsoft login page...
+2026-09-18 16:59:11  INFO        Email submitted.
+2026-09-18 16:59:13  INFO        Password submitted. Checking for MFA...
+2026-09-18 16:59:16  INFO        No MFA challenge detected.
+2026-09-18 16:59:16  INFO        'Stay signed in?' -- answered No.
+2026-09-18 16:59:16  INFO        Navigating to Power BI...
+2026-09-18 16:59:25  INFO        Logged in successfully.
+2026-09-18 16:59:25  INFO      Navigating to workspace "AutoEmails" -> report "Franchise DataSet"...
+2026-09-18 16:59:26  INFO        Looking for workspace "AutoEmails"...
+2026-09-18 16:59:31  INFO        Found workspace in sidebar.
+2026-09-18 16:59:31  INFO        Navigating to workspace directly...
+2026-09-18 16:59:36  INFO        Looking for report "Franchise DataSet"...
+2026-09-18 16:59:36  INFO        Navigating to report...
+2026-09-18 16:59:46  INFO        Identity prompt dismissed (attempt 1).
+2026-09-18 16:59:48  INFO        Identity prompt dismissed (attempt 2).
+2026-09-18 16:59:50  INFO        Report URL: https://app.powerbi.com/groups/d5f0d52b-8c11-4092-9b88-d9cfab71c3fe/reports/91d645a5-6cae-45f8-b9c2-b29ad296f652/40867f7e388ce019a7a4
+2026-09-18 16:59:50  INFO      Report URL acquired: https://app.powerbi.com/groups/d5f0d52b-8c11-4092-9b88-d9cfab71c3fe/reports/91d645a5-6cae-45f8-b9c2-b29ad296f652/40867f7e388ce019a7a4
+2026-09-18 16:59:50  INFO      
+Processing: Kamal Tiwari
+2026-09-18 16:59:50  INFO        Filter URL: ...?filter=Store_x0020_Master/AOM_x0020_Mail_x0020_Id eq 'aomnorth1@kisna.com'
+2026-09-18 16:59:50  INFO        Loading filtered report...
+2026-09-18 17:00:03  INFO        Identity prompt dismissed (attempt 1).
+2026-09-18 17:00:05  INFO        Identity prompt dismissed (attempt 2).
+2026-09-18 17:00:10  INFO        Active URL confirms filter: yes
+2026-09-18 17:00:15  INFO        Clicking Export toolbar button...
+2026-09-18 17:00:15  INFO        Selecting PDF and waiting for download...
+2026-09-18 17:00:17  INFO        Export dialog confirmed.
+2026-09-18 17:00:36  INFO        PDF saved: Kamal_Tiwari_18-Sep-2026.pdf
+2026-09-18 17:00:41  INFO        Email sent -> arshdeep.matharo@kisna.com
+2026-09-18 17:00:41  INFO        Email sent to arshdeep.matharo@kisna.com
+2026-09-18 17:00:41  INFO      
+Processing: Bhrigunath Chaurasia
+2026-09-18 17:00:41  INFO        Filter URL: ...?filter=Store_x0020_Master/AOM_x0020_Mail_x0020_Id eq 'aomnorth3d@kisna.com'
+2026-09-18 17:00:41  INFO        Loading filtered report...
+2026-09-18 17:00:54  INFO        Identity prompt dismissed (attempt 1).
+2026-09-18 17:00:56  INFO        Identity prompt dismissed (attempt 2).
+2026-09-18 17:01:01  INFO        Active URL confirms filter: yes
+2026-09-18 17:01:05  INFO        Clicking Export toolbar button...
+2026-09-18 17:01:06  INFO        Selecting PDF and waiting for download...
+2026-09-18 17:01:07  INFO        Export dialog confirmed.
+2026-09-18 17:01:29  INFO        PDF saved: Bhrigunath_Chaurasia_18-Sep-2026.pdf
+2026-09-18 17:01:31  INFO        Email sent -> pranav.falod@kisna.com
+2026-09-18 17:01:31  INFO        Email sent to pranav.falod@kisna.com
+2026-09-18 17:01:31  INFO      
+Processing: Ritesh Soni
+2026-09-18 17:01:31  INFO        Filter URL: ...?filter=Store_x0020_Master/AOM_x0020_Mail_x0020_Id eq 'aomnorth1b@kisna.com'
+2026-09-18 17:01:31  INFO        Loading filtered report...
+2026-09-18 17:01:45  INFO        Identity prompt dismissed (attempt 1).
+2026-09-18 17:01:47  INFO        Identity prompt dismissed (attempt 2).
+2026-09-18 17:01:52  INFO        Active URL confirms filter: yes
+2026-09-18 17:01:57  INFO        Clicking Export toolbar button...
+2026-09-18 17:01:58  INFO        Selecting PDF and waiting for download...
+2026-09-18 17:01:59  INFO        Export dialog confirmed.
+2026-09-18 17:02:20  INFO        PDF saved: Ritesh_Soni_18-Sep-2026.pdf
+2026-09-18 17:02:21  INFO        Email sent -> pragati.panhale@kisna.com
+2026-09-18 17:02:21  INFO        Email sent to pragati.panhale@kisna.com
+2026-09-18 17:02:21  INFO      
+=======================================================
+2026-09-18 17:02:21  INFO        Done.  Sent: 3   Failed: 0
+2026-09-18 17:02:21  INFO      =======================================================
+2026-09-18 17:27:07  INFO      =======================================================
+2026-09-18 17:27:07  INFO        Power BI Report Automation
+2026-09-18 17:27:07  INFO        Running immediately (--now)
+2026-09-18 17:27:07  INFO      =======================================================
+2026-09-18 17:27:19  INFO      Loaded 3 AOM(s) from StoreMAster.xlsx
+2026-09-18 17:27:19  INFO        - Kamal Tiwari | filter: aomnorth1@kisna.com | send to: arshdeep.matharo@kisna.com
+2026-09-18 17:27:19  INFO        - Bhrigunath Chaurasia | filter: aomnorth3d@kisna.com | send to: pranav.falod@kisna.com
+2026-09-18 17:27:19  INFO        - Ritesh Soni | filter: aomnorth1b@kisna.com | send to: pragati.panhale@kisna.com
+2026-09-18 17:28:01  INFO      Browser started (headless). Logging into Power BI...
+2026-09-18 17:28:01  INFO        Navigating to Microsoft login page...
+2026-09-18 17:28:09  INFO        Email submitted.
+2026-09-18 17:28:11  INFO        Password submitted. Checking for MFA...
+2026-09-18 17:28:14  INFO        No MFA challenge detected.
+2026-09-18 17:28:14  INFO        'Stay signed in?' -- answered No.
+2026-09-18 17:28:14  INFO        Navigating to Power BI...
+2026-09-18 17:28:29  INFO        Logged in successfully.
+2026-09-18 17:28:29  INFO      Navigating to workspace "AutoEmails" -> report "Franchise DataSet"...
+2026-09-18 17:28:30  INFO        Looking for workspace "AutoEmails"...
+2026-09-18 17:28:56  INFO        Navigating to workspace directly...
+2026-09-18 17:29:01  INFO        Looking for report "Franchise DataSet"...
+2026-09-18 17:29:09  INFO        Navigating to report...
+2026-09-18 17:29:24  INFO        Identity prompt dismissed (attempt 1).
+2026-09-18 17:29:26  INFO        Identity prompt dismissed (attempt 2).
+2026-09-18 17:29:28  INFO        Report URL: https://app.powerbi.com/groups/d5f0d52b-8c11-4092-9b88-d9cfab71c3fe/reports/91d645a5-6cae-45f8-b9c2-b29ad296f652/40867f7e388ce019a7a4
+2026-09-18 17:29:28  INFO      Report URL acquired: https://app.powerbi.com/groups/d5f0d52b-8c11-4092-9b88-d9cfab71c3fe/reports/91d645a5-6cae-45f8-b9c2-b29ad296f652/40867f7e388ce019a7a4
+2026-09-18 17:29:28  INFO      
+Processing: Kamal Tiwari
+2026-09-18 17:29:28  INFO        Filter URL: ...?filter=Store_x0020_Master/AOM_x0020_Mail_x0020_Id eq 'aomnorth1@kisna.com'
+2026-09-18 17:29:28  INFO        Loading filtered report...
+2026-09-18 17:29:46  INFO        Identity prompt dismissed (attempt 1).
+2026-09-18 17:29:48  INFO        Identity prompt dismissed (attempt 2).
+2026-09-18 17:29:53  INFO        Active URL confirms filter: yes
+2026-09-18 17:29:58  INFO        Clicking Export toolbar button...
+2026-09-18 17:29:59  INFO        Selecting PDF and waiting for download...
+2026-09-18 17:30:00  INFO        Export dialog confirmed.
+2026-09-18 17:30:24  INFO        PDF saved: Kamal_Tiwari_18-Sep-2026.pdf
+2026-09-18 17:30:26  INFO        Email sent -> arshdeep.matharo@kisna.com
+2026-09-18 17:30:26  INFO        Email sent to arshdeep.matharo@kisna.com
+2026-09-18 17:30:26  INFO      
+Processing: Bhrigunath Chaurasia
+2026-09-18 17:30:26  INFO        Filter URL: ...?filter=Store_x0020_Master/AOM_x0020_Mail_x0020_Id eq 'aomnorth3d@kisna.com'
+2026-09-18 17:30:26  INFO        Loading filtered report...
+2026-09-18 17:30:42  INFO        Identity prompt dismissed (attempt 1).
+2026-09-18 17:30:44  INFO        Identity prompt dismissed (attempt 2).
+2026-09-18 17:30:49  INFO        Active URL confirms filter: yes
+2026-09-18 17:30:54  INFO        Clicking Export toolbar button...
+2026-09-18 17:30:55  INFO        Selecting PDF and waiting for download...
+2026-09-18 17:30:56  INFO        Export dialog confirmed.
+2026-09-18 17:31:19  INFO        PDF saved: Bhrigunath_Chaurasia_18-Sep-2026.pdf
+2026-09-18 17:31:21  INFO        Email sent -> pranav.falod@kisna.com
+2026-09-18 17:31:21  INFO        Email sent to pranav.falod@kisna.com
+2026-09-18 17:31:21  INFO      
+Processing: Ritesh Soni
+2026-09-18 17:31:21  INFO        Filter URL: ...?filter=Store_x0020_Master/AOM_x0020_Mail_x0020_Id eq 'aomnorth1b@kisna.com'
+2026-09-18 17:31:21  INFO        Loading filtered report...
+2026-09-18 17:31:38  INFO        Identity prompt dismissed (attempt 1).
+2026-09-18 17:31:40  INFO        Identity prompt dismissed (attempt 2).
+2026-09-18 17:31:45  INFO        Active URL confirms filter: yes
+2026-09-18 17:31:50  INFO        Clicking Export toolbar button...
+2026-09-18 17:31:51  INFO        Selecting PDF and waiting for download...
+2026-09-18 17:31:53  INFO        Export dialog confirmed.
+2026-09-18 17:32:15  INFO        PDF saved: Ritesh_Soni_18-Sep-2026.pdf
+2026-09-18 17:32:17  INFO        Email sent -> pragati.panhale@kisna.com
+2026-09-18 17:32:17  INFO        Email sent to pragati.panhale@kisna.com
+2026-09-18 17:32:17  INFO      
+=======================================================
+2026-09-18 17:32:17  INFO        Done.  Sent: 3   Failed: 0
+2026-09-18 17:32:17  INFO      =======================================================
+2026-09-18 18:11:51  INFO      =======================================================
+2026-09-18 18:11:51  INFO        Power BI Report Automation
+2026-09-18 18:11:51  INFO        Running immediately (--now)
+2026-09-18 18:11:51  INFO      =======================================================
+2026-09-18 18:12:08  INFO      Loaded 3 AOM(s) from StoreMAster.xlsx
+2026-09-18 18:12:08  INFO        - Kamal Tiwari | filter: aomnorth1@kisna.com | send to: arshdeep.matharo@kisna.com
+2026-09-18 18:12:08  INFO        - Bhrigunath Chaurasia | filter: aomnorth3d@kisna.com | send to: pranav.falod@kisna.com
+2026-09-18 18:12:08  INFO        - Ritesh Soni | filter: aomnorth1b@kisna.com | send to: pragati.panhale@kisna.com
+2026-09-18 18:12:58  INFO      Browser started (headless). Logging into Power BI...
+2026-09-18 18:12:58  INFO        Navigating to Microsoft login page...
+2026-09-18 18:13:08  INFO        Email submitted.
+2026-09-18 18:13:10  INFO        Password submitted. Checking for MFA...
+2026-09-18 18:13:13  INFO        No MFA challenge detected.
+2026-09-18 18:13:13  INFO        'Stay signed in?' -- answered No.
+2026-09-18 18:13:13  INFO        Navigating to Power BI...
+2026-09-18 18:13:23  INFO        Logged in successfully.
+2026-09-18 18:13:23  INFO      Navigating to workspace "AutoEmails" -> report "Franchise DataSet"...
+2026-09-18 18:13:29  INFO        Looking for workspace "AutoEmails"...
+2026-09-18 18:13:39  INFO        Found workspace in sidebar.
+2026-09-18 18:13:39  INFO        Navigating to workspace directly...
+2026-09-18 18:13:44  INFO        Looking for report "Franchise DataSet"...
+2026-09-18 18:13:46  INFO        Navigating to report...
+2026-09-18 18:13:56  INFO        Identity prompt dismissed (attempt 1).
+2026-09-18 18:13:59  INFO        Identity prompt dismissed (attempt 2).
+2026-09-18 18:14:01  INFO        Report URL: https://app.powerbi.com/groups/d5f0d52b-8c11-4092-9b88-d9cfab71c3fe/reports/91d645a5-6cae-45f8-b9c2-b29ad296f652/40867f7e388ce019a7a4
+2026-09-18 18:14:01  INFO      Report URL acquired: https://app.powerbi.com/groups/d5f0d52b-8c11-4092-9b88-d9cfab71c3fe/reports/91d645a5-6cae-45f8-b9c2-b29ad296f652/40867f7e388ce019a7a4
+2026-09-18 18:14:01  INFO      
+Processing: Kamal Tiwari
+2026-09-18 18:14:01  INFO        Filter URL: ...?filter=Store_x0020_Master/AOM_x0020_Mail_x0020_Id eq 'aomnorth1@kisna.com'
+2026-09-18 18:14:01  INFO        Resetting to base report URL (flushing residual state)...
+2026-09-18 18:14:08  INFO        Identity prompt dismissed (attempt 1).
+2026-09-18 18:14:12  INFO        Identity prompt dismissed (attempt 2).
+2026-09-18 18:14:14  INFO        Loading filtered report for: aomnorth1@kisna.com
+2026-09-18 18:14:29  INFO        Identity prompt dismissed (attempt 1).
+2026-09-18 18:14:31  INFO        Identity prompt dismissed (attempt 2).
+2026-09-18 18:14:33  INFO        URL after identity prompt : https://app.powerbi.com/groups/d5f0d52b-8c11-4092-9b88-d9cfab71c3fe/reports/91d645a5-6cae-45f8-b9c2-b29ad296f652/40867f7e388ce019a7a4?experience=power-bi&filter=Store_x0020_Master%2FAOM_x0020_Mail_x0020_Id%20eq%20%27aomnorth1@kisna.com%27
+2026-09-18 18:14:33  INFO        URL just before export    : https://app.powerbi.com/groups/d5f0d52b-8c11-4092-9b88-d9cfab71c3fe/reports/91d645a5-6cae-45f8-b9c2-b29ad296f652/40867f7e388ce019a7a4?experience=power-bi&filter=Store_x0020_Master%2FAOM_x0020_Mail_x0020_Id%20eq%20%27aomnorth1@kisna.com%27
+2026-09-18 18:14:35  WARNING     Filters pane not readable — proceeding with URL check only.
+2026-09-18 18:14:40  INFO        Clicking Export toolbar button...
+2026-09-18 18:14:41  INFO        Selecting PDF and waiting for download...
+2026-09-18 18:14:42  INFO        Export dialog confirmed.
+2026-09-18 18:15:00  INFO        PDF saved: Kamal_Tiwari_18-Sep-2026.pdf
+2026-09-18 18:15:02  INFO        Email sent -> arshdeep.matharo@kisna.com
+2026-09-18 18:15:02  INFO        Email sent to arshdeep.matharo@kisna.com
+2026-09-18 18:15:02  INFO      
+Processing: Bhrigunath Chaurasia
+2026-09-18 18:15:02  INFO        Filter URL: ...?filter=Store_x0020_Master/AOM_x0020_Mail_x0020_Id eq 'aomnorth3d@kisna.com'
+2026-09-18 18:15:02  INFO        Resetting to base report URL (flushing residual state)...
+2026-09-18 18:15:13  INFO        Identity prompt dismissed (attempt 1).
+2026-09-18 18:15:16  INFO        Identity prompt dismissed (attempt 2).
+2026-09-18 18:15:18  INFO        Loading filtered report for: aomnorth3d@kisna.com
+2026-09-18 18:15:31  INFO        Identity prompt dismissed (attempt 1).
+2026-09-18 18:15:34  INFO        Identity prompt dismissed (attempt 2).
+2026-09-18 18:15:36  INFO        URL after identity prompt : https://app.powerbi.com/groups/d5f0d52b-8c11-4092-9b88-d9cfab71c3fe/reports/91d645a5-6cae-45f8-b9c2-b29ad296f652/40867f7e388ce019a7a4?experience=power-bi&filter=Store_x0020_Master%2FAOM_x0020_Mail_x0020_Id%20eq%20%27aomnorth3d@kisna.com%27
+2026-09-18 18:15:36  INFO        URL just before export    : https://app.powerbi.com/groups/d5f0d52b-8c11-4092-9b88-d9cfab71c3fe/reports/91d645a5-6cae-45f8-b9c2-b29ad296f652/40867f7e388ce019a7a4?experience=power-bi&filter=Store_x0020_Master%2FAOM_x0020_Mail_x0020_Id%20eq%20%27aomnorth3d@kisna.com%27
+2026-09-18 18:15:38  WARNING     Filters pane not readable — proceeding with URL check only.
+2026-09-18 18:15:42  INFO        Clicking Export toolbar button...
+2026-09-18 18:15:43  INFO        Selecting PDF and waiting for download...
+2026-09-18 18:15:44  INFO        Export dialog confirmed.
+2026-09-18 18:16:07  INFO        PDF saved: Bhrigunath_Chaurasia_18-Sep-2026.pdf
+2026-09-18 18:16:11  INFO        Email sent -> pranav.falod@kisna.com
+2026-09-18 18:16:11  INFO        Email sent to pranav.falod@kisna.com
+2026-09-18 18:16:11  INFO      
+Processing: Ritesh Soni
+2026-09-18 18:16:11  INFO        Filter URL: ...?filter=Store_x0020_Master/AOM_x0020_Mail_x0020_Id eq 'aomnorth1b@kisna.com'
+2026-09-18 18:16:11  INFO        Resetting to base report URL (flushing residual state)...
+2026-09-18 18:16:18  INFO        Identity prompt dismissed (attempt 1).
+2026-09-18 18:16:20  INFO        Identity prompt dismissed (attempt 2).
+2026-09-18 18:16:22  INFO        Loading filtered report for: aomnorth1b@kisna.com
+2026-09-18 18:16:37  INFO        Identity prompt dismissed (attempt 1).
+2026-09-18 18:16:39  INFO        Identity prompt dismissed (attempt 2).
+2026-09-18 18:16:41  INFO        URL after identity prompt : https://app.powerbi.com/groups/d5f0d52b-8c11-4092-9b88-d9cfab71c3fe/reports/91d645a5-6cae-45f8-b9c2-b29ad296f652/40867f7e388ce019a7a4?experience=power-bi&filter=Store_x0020_Master%2FAOM_x0020_Mail_x0020_Id%20eq%20%27aomnorth1b@kisna.com%27
+2026-09-18 18:16:41  INFO        URL just before export    : https://app.powerbi.com/groups/d5f0d52b-8c11-4092-9b88-d9cfab71c3fe/reports/91d645a5-6cae-45f8-b9c2-b29ad296f652/40867f7e388ce019a7a4?experience=power-bi&filter=Store_x0020_Master%2FAOM_x0020_Mail_x0020_Id%20eq%20%27aomnorth1b@kisna.com%27
+2026-09-18 18:16:43  WARNING     Filters pane not readable — proceeding with URL check only.
+2026-09-18 18:16:48  INFO        Clicking Export toolbar button...
+2026-09-18 18:16:49  INFO        Selecting PDF and waiting for download...
+2026-09-18 18:16:50  INFO        Export dialog confirmed.
+2026-09-18 18:17:12  INFO        PDF saved: Ritesh_Soni_18-Sep-2026.pdf
+2026-09-18 18:17:14  INFO        Email sent -> pragati.panhale@kisna.com
+2026-09-18 18:17:14  INFO        Email sent to pragati.panhale@kisna.com
+2026-09-18 18:17:14  INFO      
+=======================================================
+2026-09-18 18:17:14  INFO        Done.  Sent: 3   Failed: 0
+2026-09-18 18:17:14  INFO      =======================================================
+2026-09-19 09:48:45  INFO      =======================================================
+2026-09-19 09:48:45  INFO        Power BI Report Automation
+2026-09-19 09:48:45  INFO        Running immediately (--now)
+2026-09-19 09:48:45  INFO      =======================================================
+2026-09-19 09:49:00  INFO      Loaded 3 AOM(s) from StoreMAster.xlsx
+2026-09-19 09:49:00  INFO        - Kamal Tiwari | filter: aomnorth1@kisna.com | send to: arshdeep.matharo@kisna.com
+2026-09-19 09:49:00  INFO        - Bhrigunath Chaurasia | filter: aomnorth3d@kisna.com | send to: pranav.falod@kisna.com
+2026-09-19 09:49:00  INFO        - Ritesh Soni | filter: aomnorth1b@kisna.com | send to: pragati.panhale@kisna.com
+2026-09-19 09:49:25  INFO      Browser started (headless). Logging into Power BI...
+2026-09-19 09:49:25  INFO        Navigating to Microsoft login page...
+2026-09-19 09:49:32  INFO        Email submitted.
+2026-09-19 09:49:34  INFO        Password submitted. Checking for MFA...
+2026-09-19 09:49:36  INFO        No MFA challenge detected.
+2026-09-19 09:49:37  INFO        'Stay signed in?' -- answered No.
+2026-09-19 09:49:37  INFO        Navigating to Power BI...
+2026-09-19 09:49:46  INFO        Logged in successfully.
+2026-09-19 09:49:46  INFO      Navigating to workspace "AutoEmails" -> report "Franchise DataSet"...
+2026-09-19 09:49:48  INFO        Looking for workspace "AutoEmails"...
+2026-09-19 09:49:58  INFO        Found workspace in sidebar.
+2026-09-19 09:49:58  INFO        Navigating to workspace directly...
+2026-09-19 09:50:02  INFO        Looking for report "Franchise DataSet"...
+2026-09-19 09:50:03  INFO        Navigating to report...
+2026-09-19 09:50:12  INFO        Identity prompt dismissed (attempt 1).
+2026-09-19 09:50:14  INFO        Identity prompt dismissed (attempt 2).
+2026-09-19 09:50:16  INFO        Report URL: https://app.powerbi.com/groups/d5f0d52b-8c11-4092-9b88-d9cfab71c3fe/reports/91d645a5-6cae-45f8-b9c2-b29ad296f652/40867f7e388ce019a7a4
+2026-09-19 09:50:16  INFO      Report URL acquired: https://app.powerbi.com/groups/d5f0d52b-8c11-4092-9b88-d9cfab71c3fe/reports/91d645a5-6cae-45f8-b9c2-b29ad296f652/40867f7e388ce019a7a4
+2026-09-19 09:50:16  INFO      
+Processing: Kamal Tiwari
+2026-09-19 09:50:16  INFO        Navigating to base report URL (clean state)...
+2026-09-19 09:50:22  INFO        Identity prompt dismissed (attempt 1).
+2026-09-19 09:50:24  INFO        Identity prompt dismissed (attempt 2).
+2026-09-19 09:50:26  INFO        Opening Filters pane...
+2026-09-19 09:50:26  WARNING     Could not confirm Filters pane is open — continuing anyway.
+2026-09-19 09:50:28  INFO        Setting filter: AOM Mail Id = aomnorth1@kisna.com
+2026-09-19 09:50:28  INFO        Locating 'AOM Mail Id' filter card...
+2026-09-19 09:50:30  INFO        Filter card 'AOM Mail Id' located and expanded.
+2026-09-19 09:50:31  INFO        Existing filter cleared.
+2026-09-19 09:50:35  INFO        Filter set via Basic filter mode ✓
+2026-09-19 09:50:35  INFO        Waiting for report data to refresh...
+2026-09-19 09:50:41  INFO        Verifying report data on screen...
+2026-09-19 09:50:44  INFO        Verification screenshot: verify_Kamal Tiwari.png
+2026-09-19 09:50:44  ERROR     
+  ╔══ DATA CONFLICT — EMAIL WILL NOT BE SENT ══════╗
+  ║  AOM              : Kamal Tiwari
+  ║  Expected filter  : aomnorth1@kisna.com
+  ║  Conflicting data : aomnorth1b@kisna.com, aomnorth3d@kisna.com
+  ║  Report contains another AOM's data. Aborting.
+  ╚═════════════════════════════════════════════════╝
+2026-09-19 09:50:44  ERROR       Export failed -- skipping email for Kamal Tiwari
+2026-09-19 09:50:44  INFO      
+Processing: Bhrigunath Chaurasia
+2026-09-19 09:50:44  INFO        Navigating to base report URL (clean state)...
+2026-09-19 09:50:52  INFO        Identity prompt dismissed (attempt 1).
+2026-09-19 09:50:55  INFO        Identity prompt dismissed (attempt 2).
+2026-09-19 09:50:57  INFO        Opening Filters pane...
+2026-09-19 09:50:57  WARNING     Could not confirm Filters pane is open — continuing anyway.
+2026-09-19 09:50:59  INFO        Setting filter: AOM Mail Id = aomnorth3d@kisna.com
+2026-09-19 09:50:59  INFO        Locating 'AOM Mail Id' filter card...
+2026-09-19 09:51:00  INFO        Filter card 'AOM Mail Id' located and expanded.
+2026-09-19 09:51:01  INFO        Existing filter cleared.
+2026-09-19 09:51:05  INFO        Filter set via Basic filter mode ✓
+2026-09-19 09:51:05  INFO        Waiting for report data to refresh...
+2026-09-19 09:51:11  INFO        Verifying report data on screen...
+2026-09-19 09:51:15  INFO        Verification screenshot: verify_Bhrigunath Chaurasia.png
+2026-09-19 09:51:15  ERROR     
+  ╔══ DATA CONFLICT — EMAIL WILL NOT BE SENT ══════╗
+  ║  AOM              : Bhrigunath Chaurasia
+  ║  Expected filter  : aomnorth3d@kisna.com
+  ║  Conflicting data : aomnorth1b@kisna.com, aomnorth1@kisna.com
+  ║  Report contains another AOM's data. Aborting.
+  ╚═════════════════════════════════════════════════╝
+2026-09-19 09:51:15  ERROR       Export failed -- skipping email for Bhrigunath Chaurasia
+2026-09-19 09:51:15  INFO      
+Processing: Ritesh Soni
+2026-09-19 09:51:15  INFO        Navigating to base report URL (clean state)...
+2026-09-19 09:51:25  INFO        Identity prompt dismissed (attempt 1).
+2026-09-19 09:51:27  INFO        Identity prompt dismissed (attempt 2).
+2026-09-19 09:51:29  INFO        Opening Filters pane...
+2026-09-19 09:51:29  WARNING     Could not confirm Filters pane is open — continuing anyway.
+2026-09-19 09:51:31  INFO        Setting filter: AOM Mail Id = aomnorth1b@kisna.com
+2026-09-19 09:51:31  INFO        Locating 'AOM Mail Id' filter card...
+2026-09-19 09:51:32  INFO        Filter card 'AOM Mail Id' located and expanded.
+2026-09-19 09:51:33  INFO        Existing filter cleared.
+2026-09-19 09:51:37  INFO        Filter set via Basic filter mode ✓
+2026-09-19 09:51:37  INFO        Waiting for report data to refresh...
+2026-09-19 09:51:43  INFO        Verifying report data on screen...
+2026-09-19 09:51:46  INFO        Verification screenshot: verify_Ritesh Soni.png
+2026-09-19 09:51:46  ERROR     
+  ╔══ DATA CONFLICT — EMAIL WILL NOT BE SENT ══════╗
+  ║  AOM              : Ritesh Soni
+  ║  Expected filter  : aomnorth1b@kisna.com
+  ║  Conflicting data : aomnorth3d@kisna.com, aomnorth1@kisna.com
+  ║  Report contains another AOM's data. Aborting.
+  ╚═════════════════════════════════════════════════╝
+2026-09-19 09:51:46  ERROR       Export failed -- skipping email for Ritesh Soni
+2026-09-19 09:51:47  INFO      
+=======================================================
+2026-09-19 09:51:47  INFO        Done.  Sent: 0   Failed: 3
+2026-09-19 09:51:47  INFO      =======================================================
+2026-09-19 10:27:07  INFO      =======================================================
+2026-09-19 10:27:07  INFO        Power BI Report Automation
+2026-09-19 10:27:07  INFO        Running immediately (--now)
+2026-09-19 10:27:07  INFO      =======================================================
+2026-09-19 10:27:25  INFO      Loaded 3 AOM(s) from StoreMAster.xlsx
+2026-09-19 10:27:25  INFO        - Kamal Tiwari | filter: aomnorth1@kisna.com | send to: arshdeep.matharo@kisna.com
+2026-09-19 10:27:25  INFO        - Bhrigunath Chaurasia | filter: aomnorth3d@kisna.com | send to: pranav.falod@kisna.com
+2026-09-19 10:27:25  INFO        - Ritesh Soni | filter: aomnorth1b@kisna.com | send to: pragati.panhale@kisna.com
+2026-09-19 10:28:10  INFO      Browser started (headless). Logging into Power BI...
+2026-09-19 10:28:10  INFO        Navigating to Microsoft login page...
+2026-09-19 10:28:20  INFO        Email submitted.
+2026-09-19 10:28:22  INFO        Password submitted. Checking for MFA...
+2026-09-19 10:28:25  INFO        No MFA challenge detected.
+2026-09-19 10:28:25  INFO        'Stay signed in?' -- answered No.
+2026-09-19 10:28:25  INFO        Navigating to Power BI...
+2026-09-19 10:28:38  INFO        Logged in successfully.
+2026-09-19 10:28:38  INFO      Navigating to workspace "AutoEmails" -> report "Franchise DataSet"...
+2026-09-19 10:28:39  INFO        Looking for workspace "AutoEmails"...
+2026-09-19 10:29:06  INFO        Navigating to workspace directly...
+2026-09-19 10:29:12  INFO        Looking for report "Franchise DataSet"...
+2026-09-19 10:29:18  INFO        Navigating to report...
+2026-09-19 10:29:29  INFO        Identity prompt dismissed (attempt 1).
+2026-09-19 10:29:36  INFO        Identity prompt dismissed (attempt 2).
+2026-09-19 10:29:38  INFO        Report URL: https://app.powerbi.com/groups/d5f0d52b-8c11-4092-9b88-d9cfab71c3fe/reports/91d645a5-6cae-45f8-b9c2-b29ad296f652/40867f7e388ce019a7a4
+2026-09-19 10:29:38  INFO      Report URL acquired: https://app.powerbi.com/groups/d5f0d52b-8c11-4092-9b88-d9cfab71c3fe/reports/91d645a5-6cae-45f8-b9c2-b29ad296f652/40867f7e388ce019a7a4
+2026-09-19 10:29:38  INFO      
+Processing: Kamal Tiwari
+2026-09-19 10:29:38  INFO        Navigating to base report URL (clean state)...
+2026-09-19 10:29:51  INFO        Identity prompt dismissed (attempt 1).
+2026-09-19 10:29:55  INFO        Identity prompt dismissed (attempt 2).
+2026-09-19 10:29:57  INFO        Opening Filters pane...
+2026-09-19 10:29:58  WARNING     Could not confirm Filters pane is open — continuing anyway.
+2026-09-19 10:29:59  INFO        Setting filter: AOM Mail Id = aomnorth1@kisna.com
+2026-09-19 10:29:59  INFO        Step A: Opening AOM Mail Id slicer dropdown...
+2026-09-19 10:30:01  INFO        Slicer dropdown opened (selector: [role="combobox"])
+2026-09-19 10:30:01  WARNING     'Select all' not found in slicer — may not be needed.
+2026-09-19 10:30:04  INFO        Selected 'aomnorth1@kisna.com' in slicer ✓
+2026-09-19 10:30:04  INFO        Waiting for report data to refresh...
+2026-09-19 10:30:10  INFO        Verifying report data on screen...
+2026-09-19 10:30:14  INFO        Verification screenshot: verify_Kamal Tiwari.png
+2026-09-19 10:30:14  INFO        Data verification ✓ — only aomnorth1@kisna.com found.
+  No conflicting AOM data. Safe to export.
+2026-09-19 10:30:18  INFO        Clicking Export toolbar button...
+2026-09-19 10:30:20  INFO        Selecting PDF and waiting for download...
+2026-09-19 10:30:21  INFO        Export dialog confirmed.
+2026-09-19 10:30:46  INFO        PDF saved: Kamal_Tiwari_19-Sep-2026.pdf
+2026-09-19 10:30:50  INFO        Email sent -> arshdeep.matharo@kisna.com
+2026-09-19 10:30:50  INFO        Email sent to arshdeep.matharo@kisna.com
+2026-09-19 10:30:50  INFO      
+Processing: Bhrigunath Chaurasia
+2026-09-19 10:30:50  INFO        Navigating to base report URL (clean state)...
+2026-09-19 10:31:05  INFO        Opening Filters pane...
+2026-09-19 10:31:08  WARNING     Could not confirm Filters pane is open — continuing anyway.
+2026-09-19 10:31:10  INFO        Setting filter: AOM Mail Id = aomnorth3d@kisna.com
+2026-09-19 10:31:10  INFO        Step A: Opening AOM Mail Id slicer dropdown...
+2026-09-19 10:31:11  INFO        Slicer dropdown opened (selector: [role="combobox"])
+2026-09-19 10:31:12  WARNING     'Select all' not found in slicer — may not be needed.
+2026-09-19 10:31:12  WARNING     Could not select email from slicer dropdown. Trying Filters pane...
+2026-09-19 10:31:12  INFO        Step B: Trying Filters pane card for 'AOM Mail Id'...
+2026-09-19 10:31:14  INFO        Filter card 'AOM Mail Id' expanded.
+2026-09-19 10:31:14  ERROR       All approaches failed.
+  Could not set 'AOM Mail Id' = 'aomnorth3d@kisna.com'.
+  Email will NOT be sent.
+2026-09-19 10:31:14  ERROR       FILTER APPLY FAILED — Bhrigunath Chaurasia:
+  Could not set 'AOM Mail Id' = 'aomnorth3d@kisna.com' in Filters pane.
+  Email will NOT be sent.
+2026-09-19 10:31:15  INFO        Debug screenshot: debug_Bhrigunath Chaurasia.png
+2026-09-19 10:31:15  ERROR       Export failed -- skipping email for Bhrigunath Chaurasia
+2026-09-19 10:31:15  INFO      
+Processing: Ritesh Soni
+2026-09-19 10:31:15  INFO        Navigating to base report URL (clean state)...
+2026-09-19 10:31:30  INFO        Identity prompt dismissed (attempt 1).
+2026-09-19 10:31:33  INFO        Identity prompt dismissed (attempt 2).
+2026-09-19 10:31:35  INFO        Opening Filters pane...
+2026-09-19 10:31:36  WARNING     Could not confirm Filters pane is open — continuing anyway.
+2026-09-19 10:31:37  INFO        Setting filter: AOM Mail Id = aomnorth1b@kisna.com
+2026-09-19 10:31:37  INFO        Step A: Opening AOM Mail Id slicer dropdown...
+2026-09-19 10:31:39  INFO        Slicer dropdown opened (selector: [role="combobox"])
+2026-09-19 10:31:39  WARNING     'Select all' not found in slicer — may not be needed.
+2026-09-19 10:31:41  INFO        Selected 'aomnorth1b@kisna.com' in slicer ✓
+2026-09-19 10:31:42  INFO        Waiting for report data to refresh...
+2026-09-19 10:31:48  INFO        Verifying report data on screen...
+2026-09-19 10:31:52  WARNING     Screenshot failed: [Errno 22] Invalid argument: 'C:\\Users\\LENOVO\\Downloads\\Projects\\PBi automation\\exports\\verify_Ritesh Soni.png'
+2026-09-19 10:31:52  ERROR     
+  ╔══ DATA CONFLICT — EMAIL WILL NOT BE SENT ══════╗
+  ║  AOM              : Ritesh Soni
+  ║  Expected filter  : aomnorth1b@kisna.com
+  ║  Conflicting data : aomnorth1@kisna.com, aomnorth3d@kisna.com
+  ║  Report contains another AOM's data. Aborting.
+  ╚═════════════════════════════════════════════════╝
+2026-09-19 10:31:52  ERROR       Export failed -- skipping email for Ritesh Soni
+2026-09-19 10:31:55  INFO      
+=======================================================
+2026-09-19 10:31:55  INFO        Done.  Sent: 1   Failed: 2
+2026-09-19 10:31:55  INFO      =======================================================
+2026-09-19 10:49:43  INFO      =======================================================
+2026-09-19 10:49:43  INFO        Power BI Report Automation
+2026-09-19 10:49:43  INFO        Running immediately (--now)
+2026-09-19 10:49:43  INFO      =======================================================
+2026-09-19 10:50:08  INFO      Loaded 3 AOM(s) from StoreMAster.xlsx
+2026-09-19 10:50:08  INFO        - Kamal Tiwari | filter: aomnorth1@kisna.com | send to: arshdeep.matharo@kisna.com
+2026-09-19 10:50:08  INFO        - Bhrigunath Chaurasia | filter: aomnorth3d@kisna.com | send to: pranav.falod@kisna.com
+2026-09-19 10:50:08  INFO        - Ritesh Soni | filter: aomnorth1b@kisna.com | send to: pragati.panhale@kisna.com
+2026-09-19 10:50:20  INFO      Browser started (headless). Logging into Power BI...
+2026-09-19 10:50:20  INFO        Navigating to Microsoft login page...
+2026-09-19 10:50:27  INFO        Email submitted.
+2026-09-19 10:50:29  INFO        Password submitted. Checking for MFA...
+2026-09-19 10:50:32  INFO        No MFA challenge detected.
+2026-09-19 10:50:32  INFO        'Stay signed in?' -- answered No.
+2026-09-19 10:50:32  INFO        Navigating to Power BI...
+2026-09-19 10:50:38  INFO        Logged in successfully.
+2026-09-19 10:50:38  INFO      Navigating to workspace "AutoEmails" -> report "Franchise DataSet"...
+2026-09-19 10:50:40  INFO        Looking for workspace "AutoEmails"...
+2026-09-19 10:50:50  INFO        Found workspace in sidebar.
+2026-09-19 10:50:50  INFO        Navigating to workspace directly...
+2026-09-19 10:50:54  INFO        Looking for report "Franchise DataSet"...
+2026-09-19 10:50:55  INFO        Navigating to report...
+2026-09-19 10:51:03  INFO        Identity prompt dismissed (attempt 1).
+2026-09-19 10:51:05  INFO        Identity prompt dismissed (attempt 2).
+2026-09-19 10:51:07  INFO        Report URL: https://app.powerbi.com/groups/d5f0d52b-8c11-4092-9b88-d9cfab71c3fe/reports/91d645a5-6cae-45f8-b9c2-b29ad296f652/40867f7e388ce019a7a4
+2026-09-19 10:51:07  INFO      Report URL acquired: https://app.powerbi.com/groups/d5f0d52b-8c11-4092-9b88-d9cfab71c3fe/reports/91d645a5-6cae-45f8-b9c2-b29ad296f652/40867f7e388ce019a7a4
+2026-09-19 10:51:07  INFO      
+Processing: Kamal Tiwari
+2026-09-19 10:51:07  INFO        Navigating to base report URL (clean state)...
+2026-09-19 10:51:13  INFO        Identity prompt dismissed (attempt 1).
+2026-09-19 10:51:15  INFO        Identity prompt dismissed (attempt 2).
+2026-09-19 10:51:17  INFO        Opening Filters pane...
+2026-09-19 10:51:17  WARNING     Could not confirm Filters pane is open — continuing anyway.
+2026-09-19 10:51:18  INFO        Setting filter: AOM Mail Id = aomnorth1@kisna.com
+2026-09-19 10:51:18  INFO        Step A: Opening AOM Mail Id slicer dropdown...
+2026-09-19 10:51:20  INFO        Slicer dropdown opened (selector: [role="combobox"])
+2026-09-19 10:51:21  INFO        Slicer items loaded and ready.
+2026-09-19 10:51:21  WARNING     'Select all' not found in slicer — may not be needed.
+2026-09-19 10:51:23  INFO        Selected 'aomnorth1@kisna.com' in slicer ✓
+2026-09-19 10:51:24  INFO        Polling until data refreshes (max 90s)...
+2026-09-19 10:51:29  INFO        Data looks clean after 5s — no other AOM emails found. Proceeding.
+2026-09-19 10:51:32  INFO        Verification screenshot: verify_Kamal_Tiwari.png
+2026-09-19 10:51:32  INFO        Data verification ✓ — only aomnorth1@kisna.com found.
+  No conflicting AOM data. Safe to export.
+2026-09-19 10:51:36  INFO        Clicking Export toolbar button...
+2026-09-19 10:51:37  INFO        Selecting PDF and waiting for download...
+2026-09-19 10:51:39  INFO        Export dialog confirmed.
+2026-09-19 10:52:07  INFO        PDF saved: Kamal_Tiwari_19-Sep-2026.pdf
+2026-09-19 10:52:13  INFO        Email sent -> arshdeep.matharo@kisna.com
+2026-09-19 10:52:13  INFO        Email sent to arshdeep.matharo@kisna.com
+2026-09-19 10:52:13  INFO      
+Processing: Bhrigunath Chaurasia
+2026-09-19 10:52:13  INFO        Navigating to base report URL (clean state)...
+2026-09-19 10:52:18  INFO        Identity prompt dismissed (attempt 1).
+2026-09-19 10:52:20  INFO        Identity prompt dismissed (attempt 2).
+2026-09-19 10:52:22  INFO        Opening Filters pane...
+2026-09-19 10:52:22  WARNING     Could not confirm Filters pane is open — continuing anyway.
+2026-09-19 10:52:24  INFO        Setting filter: AOM Mail Id = aomnorth3d@kisna.com
+2026-09-19 10:52:24  INFO        Step A: Opening AOM Mail Id slicer dropdown...
+2026-09-19 10:52:25  INFO        Slicer dropdown opened (selector: [role="combobox"])
+2026-09-19 10:52:25  INFO        Slicer items loaded and ready.
+2026-09-19 10:52:25  WARNING     'Select all' not found in slicer — may not be needed.
+2026-09-19 10:52:27  INFO        Selected 'aomnorth3d@kisna.com' in slicer ✓
+2026-09-19 10:52:27  INFO        Polling until data refreshes (max 90s)...
+2026-09-19 10:52:32  INFO        [5s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth1b@kisna.com
+2026-09-19 10:52:37  INFO        [10s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth1b@kisna.com
+2026-09-19 10:52:42  INFO        [15s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth1b@kisna.com
+2026-09-19 10:52:47  INFO        [20s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth1b@kisna.com
+2026-09-19 10:52:52  INFO        [25s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth1b@kisna.com
+2026-09-19 10:52:57  INFO        [30s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth1b@kisna.com
+2026-09-19 10:53:02  INFO        [35s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth1b@kisna.com
+2026-09-19 10:53:07  INFO        [40s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth1b@kisna.com
+2026-09-19 10:53:12  INFO        [45s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth1b@kisna.com
+2026-09-19 10:53:17  INFO        [50s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth1b@kisna.com
+2026-09-19 10:53:22  INFO        [55s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth1b@kisna.com
+2026-09-19 10:53:27  INFO        [60s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth1b@kisna.com
+2026-09-19 10:53:32  INFO        [65s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth1b@kisna.com
+2026-09-19 10:53:37  INFO        [70s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth1b@kisna.com
+2026-09-19 10:53:42  INFO        [75s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth1b@kisna.com
+2026-09-19 10:53:47  INFO        [80s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth1b@kisna.com
+2026-09-19 10:53:52  INFO        [85s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth1b@kisna.com
+2026-09-19 10:53:57  INFO        [90s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth1b@kisna.com
+2026-09-19 10:54:00  INFO        Verification screenshot: verify_Bhrigunath_Chaurasia.png
+2026-09-19 10:54:01  ERROR     
+  ╔══ DATA CONFLICT — EMAIL WILL NOT BE SENT ══════╗
+  ║  AOM              : Bhrigunath Chaurasia
+  ║  Expected filter  : aomnorth3d@kisna.com
+  ║  Conflicting data : aomnorth1b@kisna.com, aomnorth1@kisna.com
+  ║  Report contains another AOM's data. Aborting.
+  ╚═════════════════════════════════════════════════╝
+2026-09-19 10:54:01  ERROR       Export failed -- skipping email for Bhrigunath Chaurasia
+2026-09-19 10:54:01  INFO      
+Processing: Ritesh Soni
+2026-09-19 10:54:01  INFO        Navigating to base report URL (clean state)...
+2026-09-19 10:54:05  INFO        Identity prompt dismissed (attempt 1).
+2026-09-19 10:54:07  INFO        Identity prompt dismissed (attempt 2).
+2026-09-19 10:54:09  INFO        Opening Filters pane...
+2026-09-19 10:54:09  WARNING     Could not confirm Filters pane is open — continuing anyway.
+2026-09-19 10:54:11  INFO        Setting filter: AOM Mail Id = aomnorth1b@kisna.com
+2026-09-19 10:54:11  INFO        Step A: Opening AOM Mail Id slicer dropdown...
+2026-09-19 10:54:12  INFO        Slicer dropdown opened (selector: [role="combobox"])
+2026-09-19 10:54:12  INFO        Slicer items loaded and ready.
+2026-09-19 10:54:12  WARNING     'Select all' not found in slicer — may not be needed.
+2026-09-19 10:54:14  INFO        Selected 'aomnorth1b@kisna.com' in slicer ✓
+2026-09-19 10:54:14  INFO        Polling until data refreshes (max 90s)...
+2026-09-19 10:54:19  INFO        [5s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth3d@kisna.com
+2026-09-19 10:54:24  INFO        [10s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth3d@kisna.com
+2026-09-19 10:54:29  INFO        [15s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth3d@kisna.com
+2026-09-19 10:54:34  INFO        [20s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth3d@kisna.com
+2026-09-19 10:54:39  INFO        [25s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth3d@kisna.com
+2026-09-19 10:54:44  INFO        [30s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth3d@kisna.com
+2026-09-19 10:54:49  INFO        [35s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth3d@kisna.com
+2026-09-19 10:54:54  INFO        [40s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth3d@kisna.com
+2026-09-19 10:54:59  INFO        [45s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth3d@kisna.com
+2026-09-19 10:55:04  INFO        [50s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth3d@kisna.com
+2026-09-19 10:55:10  INFO        [55s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth3d@kisna.com
+2026-09-19 10:55:15  INFO        [60s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth3d@kisna.com
+2026-09-19 10:55:20  INFO        [65s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth3d@kisna.com
+2026-09-19 10:55:25  INFO        [70s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth3d@kisna.com
+2026-09-19 10:55:30  INFO        [75s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth3d@kisna.com
+2026-09-19 10:55:35  INFO        [80s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth3d@kisna.com
+2026-09-19 10:55:40  INFO        [85s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth3d@kisna.com
+2026-09-19 10:55:45  INFO        [90s] Still waiting — conflicting emails present: aomnorth1@kisna.com, aomnorth3d@kisna.com
+2026-09-19 10:55:48  INFO        Verification screenshot: verify_Ritesh_Soni.png
+2026-09-19 10:55:48  ERROR     
+  ╔══ DATA CONFLICT — EMAIL WILL NOT BE SENT ══════╗
+  ║  AOM              : Ritesh Soni
+  ║  Expected filter  : aomnorth1b@kisna.com
+  ║  Conflicting data : aomnorth1@kisna.com, aomnorth3d@kisna.com
+  ║  Report contains another AOM's data. Aborting.
+  ╚═════════════════════════════════════════════════╝
+2026-09-19 10:55:48  ERROR       Export failed -- skipping email for Ritesh Soni
+2026-09-19 10:55:48  INFO      
+=======================================================
+2026-09-19 10:55:48  INFO        Done.  Sent: 1   Failed: 2
+2026-09-19 10:55:48  INFO      =======================================================
+2026-09-19 11:16:36  INFO      =======================================================
+2026-09-19 11:16:36  INFO        Power BI Report Automation
+2026-09-19 11:16:36  INFO        Running immediately (--now)
+2026-09-19 11:16:36  INFO      =======================================================
+2026-09-19 11:16:51  INFO      Loaded 3 AOM(s) from StoreMAster.xlsx
+2026-09-19 11:16:51  INFO        - Kamal Tiwari | filter: aomnorth1@kisna.com | send to: arshdeep.matharo@kisna.com
+2026-09-19 11:16:51  INFO        - Bhrigunath Chaurasia | filter: aomnorth3d@kisna.com | send to: pranav.falod@kisna.com
+2026-09-19 11:16:51  INFO        - Ritesh Soni | filter: aomnorth1b@kisna.com | send to: pragati.panhale@kisna.com
+2026-09-19 11:17:05  INFO      Browser started (headless). Logging into Power BI...
+2026-09-19 11:17:05  INFO        Navigating to Microsoft login page...
+2026-09-19 11:17:12  INFO        Email submitted.
+2026-09-19 11:17:14  INFO        Password submitted. Checking for MFA...
+2026-09-19 11:17:17  INFO        No MFA challenge detected.
+2026-09-19 11:17:17  INFO        'Stay signed in?' -- answered No.
+2026-09-19 11:17:17  INFO        Navigating to Power BI...
+2026-09-19 11:17:23  INFO        Logged in successfully.
+2026-09-19 11:17:23  INFO      Navigating to workspace "AutoEmails" -> report "Franchise DataSet"...
+2026-09-19 11:17:30  INFO        Looking for workspace "AutoEmails"...
+2026-09-19 11:17:40  INFO        Found workspace in sidebar.
+2026-09-19 11:17:40  INFO        Navigating to workspace directly...
+2026-09-19 11:17:45  INFO        Looking for report "Franchise DataSet"...
+2026-09-19 11:17:45  INFO        Navigating to report...
+2026-09-19 11:17:55  INFO        Identity prompt dismissed (attempt 1).
+2026-09-19 11:17:57  INFO        Identity prompt dismissed (attempt 2).
+2026-09-19 11:17:59  INFO        Report URL: https://app.powerbi.com/groups/d5f0d52b-8c11-4092-9b88-d9cfab71c3fe/reports/91d645a5-6cae-45f8-b9c2-b29ad296f652/40867f7e388ce019a7a4
+2026-09-19 11:17:59  INFO      Report URL acquired: https://app.powerbi.com/groups/d5f0d52b-8c11-4092-9b88-d9cfab71c3fe/reports/91d645a5-6cae-45f8-b9c2-b29ad296f652/40867f7e388ce019a7a4
+2026-09-19 11:17:59  INFO      
+Processing: Kamal Tiwari
+2026-09-19 11:17:59  INFO        Navigating to base report URL (clean state)...
+2026-09-19 11:18:09  INFO        Identity prompt dismissed (attempt 1).
+2026-09-19 11:18:11  INFO        Identity prompt dismissed (attempt 2).
+2026-09-19 11:18:13  INFO        Opening Filters pane...
+2026-09-19 11:18:13  WARNING     Could not confirm Filters pane is open — continuing anyway.
+2026-09-19 11:18:15  INFO        Setting filter: AOM Mail Id = aomnorth1@kisna.com
+2026-09-19 11:18:15  INFO        Step A: Opening AOM Mail Id slicer dropdown...
+2026-09-19 11:18:16  INFO        Slicer dropdown opened (selector: [role="combobox"])
+2026-09-19 11:18:16  INFO        Slicer items loaded and ready.
+2026-09-19 11:18:16  WARNING     'Select all' not found in slicer — may not be needed.
+2026-09-19 11:18:18  INFO        Selected 'aomnorth1@kisna.com' in slicer ✓
+2026-09-19 11:18:19  INFO        Polling until data refreshes (max 90s)...
+2026-09-19 11:18:24  INFO        Data looks clean after 5s — no other AOM emails found. Proceeding.
+2026-09-19 11:18:27  WARNING     Screenshot failed: [Errno 22] Invalid argument: 'C:\\Users\\LENOVO\\Downloads\\Projects\\PBi automation\\exports\\verify_Kamal_Tiwari.png'
+2026-09-19 11:18:28  INFO        Data verification ✓ — only aomnorth1@kisna.com found.
+  No conflicting AOM data. Safe to export.
+2026-09-19 11:18:32  INFO        Clicking Export toolbar button...
+2026-09-19 11:18:33  INFO        Selecting PDF and waiting for download...
+2026-09-19 11:18:35  INFO        Export dialog confirmed.
+2026-09-19 11:18:57  INFO        PDF saved: Kamal_Tiwari_19-Sep-2026.pdf
+2026-09-19 11:18:58  INFO        Email sent -> arshdeep.matharo@kisna.com
+2026-09-19 11:18:58  INFO        Email sent to arshdeep.matharo@kisna.com
+2026-09-19 11:18:58  INFO      
+Processing: Bhrigunath Chaurasia
+2026-09-19 11:18:58  INFO        Navigating to base report URL (clean state)...
+2026-09-19 11:19:10  INFO        Identity prompt dismissed (attempt 1).
+2026-09-19 11:19:14  INFO        Identity prompt dismissed (attempt 2).
+2026-09-19 11:19:16  INFO        Opening Filters pane...
+2026-09-19 11:19:16  WARNING     Could not confirm Filters pane is open — continuing anyway.
+2026-09-19 11:19:17  INFO        Setting filter: AOM Mail Id = aomnorth3d@kisna.com
+2026-09-19 11:19:17  INFO        Step A: Opening AOM Mail Id slicer dropdown...
+2026-09-19 11:19:19  INFO        Slicer dropdown opened (selector: [role="combobox"])
+2026-09-19 11:19:19  INFO        Slicer items loaded and ready.
+2026-09-19 11:19:19  WARNING     'Select all' not found in slicer — may not be needed.
+2026-09-19 11:19:21  INFO        Selected 'aomnorth3d@kisna.com' in slicer ✓
+2026-09-19 11:19:22  INFO        Dropdown still open — clicking trigger to close...
+2026-09-19 11:19:23  INFO        Polling until data refreshes (max 90s)...
+2026-09-19 11:19:28  INFO        Data looks clean after 5s — no other AOM emails found. Proceeding.
+2026-09-19 11:19:31  INFO        Verification screenshot: verify_Bhrigunath_Chaurasia.png
+2026-09-19 11:19:31  INFO        Data verification ✓ — only aomnorth3d@kisna.com found.
+  No conflicting AOM data. Safe to export.
+2026-09-19 11:19:36  INFO        Clicking Export toolbar button...
+2026-09-19 11:19:37  INFO        Selecting PDF and waiting for download...
+2026-09-19 11:19:39  INFO        Export dialog confirmed.
+2026-09-19 11:19:56  INFO        PDF saved: Bhrigunath_Chaurasia_19-Sep-2026.pdf
+2026-09-19 11:20:01  INFO        Email sent -> pranav.falod@kisna.com
+2026-09-19 11:20:01  INFO        Email sent to pranav.falod@kisna.com
+2026-09-19 11:20:01  INFO      
+Processing: Ritesh Soni
+2026-09-19 11:20:01  INFO        Navigating to base report URL (clean state)...
+2026-09-19 11:20:10  INFO        Identity prompt dismissed (attempt 1).
+2026-09-19 11:20:13  INFO        Identity prompt dismissed (attempt 2).
+2026-09-19 11:20:15  INFO        Opening Filters pane...
+2026-09-19 11:20:15  WARNING     Could not confirm Filters pane is open — continuing anyway.
+2026-09-19 11:20:17  INFO        Setting filter: AOM Mail Id = aomnorth1b@kisna.com
+2026-09-19 11:20:17  INFO        Step A: Opening AOM Mail Id slicer dropdown...
+2026-09-19 11:20:18  INFO        Slicer dropdown opened (selector: [role="combobox"])
+2026-09-19 11:20:18  INFO        Slicer items loaded and ready.
+2026-09-19 11:20:18  WARNING     'Select all' not found in slicer — may not be needed.
+2026-09-19 11:20:20  INFO        Selected 'aomnorth1b@kisna.com' in slicer ✓
+2026-09-19 11:20:21  INFO        Dropdown still open — clicking trigger to close...
+2026-09-19 11:20:21  INFO        Polling until data refreshes (max 90s)...
+2026-09-19 11:20:27  INFO        Data looks clean after 5s — no other AOM emails found. Proceeding.
+2026-09-19 11:20:30  WARNING     Screenshot failed: [Errno 22] Invalid argument: 'C:\\Users\\LENOVO\\Downloads\\Projects\\PBi automation\\exports\\verify_Ritesh_Soni.png'
+2026-09-19 11:20:30  INFO        Data verification ✓ — only aomnorth1b@kisna.com found.
+  No conflicting AOM data. Safe to export.
+2026-09-19 11:20:34  INFO        Clicking Export toolbar button...
+2026-09-19 11:20:36  INFO        Selecting PDF and waiting for download...
+2026-09-19 11:20:37  INFO        Export dialog confirmed.
+2026-09-19 11:20:57  INFO        PDF saved: Ritesh_Soni_19-Sep-2026.pdf
+2026-09-19 11:21:00  INFO        Email sent -> pragati.panhale@kisna.com
+2026-09-19 11:21:00  INFO        Email sent to pragati.panhale@kisna.com
+2026-09-19 11:21:00  INFO      
+=======================================================
+2026-09-19 11:21:00  INFO        Done.  Sent: 3   Failed: 0
+2026-09-19 11:21:00  INFO      =======================================================

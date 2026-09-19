@@ -168,10 +168,13 @@ def main():
 
             log.info(f"\nProcessing: {name}")
 
+            other_emails = [a["filter_email"] for a in aoms if a["filter_email"] != fmail]
+
             pdf = exporter.export_report(
                 filter_email=fmail,
                 aom_name=name,
                 date_str=today,
+                other_emails=other_emails,
             )
 
             if not pdf:

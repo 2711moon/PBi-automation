@@ -9,6 +9,7 @@ Responsibilities:
 Runs headless (invisible) - no browser window appears during execution.
 """
 import os
+import re
 import logging
 from typing import Optional
 
@@ -96,7 +97,8 @@ class PowerBIExporter:
 
         # Go directly to Microsoft login — skips the app.powerbi.com SSO redirect chain
         log.info("  Navigating to Microsoft login page...")
-        page.goto("https://login.microsoftonline.com/", timeout=NAV_TIMEOUT, wait_until="networkidle")
+        page.goto("https://login.microsoftonline.com/", timeout=NAV_TIMEOUT, wait_until="domcontentloaded")
+
         page.wait_for_timeout(1_500)
 
         # Step 1: Enter email
@@ -371,48 +373,99 @@ class PowerBIExporter:
         """
         Append an OData URL filter to the report URL for the given AOM email.
 
-        Power BI URL filter spec requires:
-          - '@' in email values encoded as '%40'
-          - Spaces in table/column NAMES encoded as '%20'
-          (Without %20, PBI silently ignores the filter and shows all data)
+        Power BI URL filter spec:
+          - Spaces in table/column NAMES must be encoded as '_x0020_' (OData encoding)
+            NOT '%20' — Power BI silently ignores filters with %20 in identifiers.
+          - The email value goes inside single quotes as-is (no encoding needed).
+
+        Example output:
+          ?filter=Store_x0020_Master/AOM_x0020_Mail_x0020_Id eq 'aomnorth1@kisna.com'
         """
-        encoded_value = filter_value.replace("@", "%40")
-        table  = PBI_FILTER_TABLE.replace(" ", "%20")
-        column = PBI_FILTER_COLUMN.replace(" ", "%20")
-        expr   = f"{table}/{column} eq '{encoded_value}'"
+        table  = PBI_FILTER_TABLE.replace(" ", "_x0020_")
+        column = PBI_FILTER_COLUMN.replace(" ", "_x0020_")
+        expr   = f"{table}/{column} eq '{filter_value}'"
         filter_url = f"{self._report_url}?filter={expr}"
-        log.info(f"  Filter URL: ...?filter={table}/{column} eq '{encoded_value}'")
+        log.info(f"  Filter URL: ...?filter={table}/{column} eq '{filter_value}'")
         return filter_url
 
-    def export_report(self, filter_email: str, aom_name: str, date_str: str) -> Optional[str]:
+
+    def export_report(self, filter_email: str, aom_name: str, date_str: str,
+                      other_emails: list = None) -> Optional[str]:
         """
-        Navigate to the report filtered for this AOM, export all pages as PDF.
-        Returns local path of the downloaded PDF, or None on failure.
+        For this AOM:
+          1. Navigate to the base report URL (clean state)
+          2. Set the AOM Mail Id filter directly via the Filters pane UI
+          3. Screenshot + verify only the expected AOM's data is on screen
+          4. Export as PDF
+
+        Returns local PDF path on success.
+        Returns None on failure — main.py counts as FAIL, email is NOT sent.
         """
         page = self._page
-        url  = self._build_filter_url(filter_email)
 
-        log.info(f"  Loading filtered report...")
-        page.goto(url, timeout=NAV_TIMEOUT, wait_until="domcontentloaded")
-        page.wait_for_timeout(REPORT_WAIT_MS)   # let all visuals render
-
-        # Dismiss "You need to verify your identity" dialog if it appears (up to 2x).
-        # IMPORTANT: after clicking Continue, PBI re-authenticates and may redirect
-        # the page, losing the ?filter= query parameter. So after dismissing,
-        # we always re-navigate to the filtered URL to guarantee the filter is active.
+        # ── Step 1: Navigate to base report URL (flush any residual filter) ───
+        log.info(f"  Navigating to base report URL (clean state)...")
+        page.goto(self._report_url, timeout=NAV_TIMEOUT, wait_until="domcontentloaded")
+        page.wait_for_timeout(4_000)
         self._handle_identity_prompt()
 
-        if "filter=" not in page.url:
-            log.info("  Filter lost after identity prompt — re-navigating to filtered URL...")
-            page.goto(url, timeout=NAV_TIMEOUT, wait_until="domcontentloaded")
-            page.wait_for_timeout(REPORT_WAIT_MS)
-        else:
-            # Filter is still in URL — give PBI a bit more time to apply it
-            page.wait_for_timeout(3_000)
+        # ── Step 2: Open the Filters pane ─────────────────────────────────────
+        log.info(f"  Opening Filters pane...")
+        self._open_filters_pane()
+        page.wait_for_timeout(1_500)
 
-        log.info(f"  Active URL confirms filter: {'yes' if 'filter=' in page.url else 'NO - filter missing!'}")
+        # ── Step 3: Set filter via Filters pane UI ────────────────────────────
+        log.info(f"  Setting filter: {PBI_FILTER_COLUMN} = {filter_email}")
+        if not self._apply_filter_via_pane(filter_email):
+            log.error(
+                f"  FILTER APPLY FAILED — {aom_name}:\n"
+                f"  Could not set '{PBI_FILTER_COLUMN}' = '{filter_email}' in Filters pane.\n"
+                f"  Email will NOT be sent."
+            )
+            self._debug_screenshot(page, aom_name)
+            return None
 
-        # Build output file path
+        # ── Smart wait: poll until other AOM emails are gone from the page ────
+        # Power BI fires an async DAX query after a slicer change — the data table
+        # can take anywhere from 3 to 30+ seconds to refresh depending on server load.
+        # We poll every 5 seconds and exit as soon as the data looks clean.
+        # Max wait: 90 seconds — after that we proceed and let verify() decide.
+        MAX_WAIT_SEC  = 90
+        POLL_INTERVAL = 5_000   # ms
+        elapsed_sec   = 0
+
+        log.info(f"  Polling until data refreshes (max {MAX_WAIT_SEC}s)...")
+        while elapsed_sec < MAX_WAIT_SEC:
+            page.wait_for_timeout(POLL_INTERVAL)
+            elapsed_sec += POLL_INTERVAL // 1_000
+            try:
+                # ── Close slicer dropdown before reading page text ─────────────
+                # The dropdown shows ALL option values (including unchecked ones).
+                # If it's open, innerText will contain other AOM emails that are
+                # just unchecked options — NOT actual data — causing false conflicts.
+                page.keyboard.press("Escape")
+                page.wait_for_timeout(200)
+
+                page_text = page.evaluate("() => document.body.innerText")
+                conflicts = [e for e in (other_emails or []) if e in page_text]
+                if not conflicts:
+                    log.info(
+                        f"  Data looks clean after {elapsed_sec}s "
+                        f"— no other AOM emails found. Proceeding."
+                    )
+                    break
+                log.info(
+                    f"  [{elapsed_sec}s] Still waiting — "
+                    f"conflicting emails present: {', '.join(conflicts)}"
+                )
+            except Exception:
+                pass   # page eval failed — keep waiting
+
+
+        if not self._verify_filter_on_screen(filter_email, aom_name, other_emails or []):
+            return None   # fail logged inside; main.py: fail += 1, email skipped
+
+        # ── Step 6: Export ────────────────────────────────────────────────────
         safe  = "".join(c if c.isalnum() or c in " _-" else "_" for c in aom_name)
         fname = f"{safe.replace(' ', '_')}_{date_str}.pdf"
         fpath = os.path.join(EXPORTS_DIR, fname)
@@ -425,22 +478,318 @@ class PowerBIExporter:
             return None
 
 
+    def _open_filters_pane(self) -> bool:
+        """
+        Ensure the Power BI Filters pane is open and visible.
+        Checks if already open; if not, clicks the toggle button.
+        Returns True if the pane is (or becomes) visible.
+        """
+        page = self._page
+
+        # Check if already visible
+        PANE_SELECTORS = [
+            '[data-automation-id="filters-pane"]',
+            '.filterExplorerContainer',
+            '[aria-label="Filters pane"]',
+            '.filtersPane',
+            '.report-sidePane',
+        ]
+        for sel in PANE_SELECTORS:
+            try:
+                if page.locator(sel).first.is_visible(timeout=1_500):
+                    log.info("  Filters pane already open.")
+                    return True
+            except Exception:
+                continue
+
+        # Not visible — click the toggle button
+        TOGGLE_SELECTORS = [
+            '[aria-label="Open Filters pane"]',
+            '[aria-label="Filters"]',
+            'button[title="Filters"]',
+            '[data-testid="filters-pane-toggle"]',
+            'button:has-text("Filters")',
+        ]
+        for sel in TOGGLE_SELECTORS:
+            try:
+                btn = page.locator(sel).first
+                if btn.is_visible(timeout=2_000):
+                    btn.click(force=True)
+                    page.wait_for_timeout(2_000)
+                    log.info("  Filters pane opened via toggle button.")
+                    return True
+            except Exception:
+                continue
+
+        log.warning("  Could not confirm Filters pane is open — continuing anyway.")
+        return False
+
+
+    def _apply_filter_via_pane(self, filter_email: str) -> bool:
+        """
+        Set the AOM Mail Id filter directly through the Power BI Filters pane UI.
+
+        Interacts with the AOM Mail Id slicer dropdown visual on the canvas.
+
+        Flow:
+          1. Click the slicer dropdown (showing "All") to open it
+          2. Deselect "Select all" — removes the "All" selection completely
+          3. Click ONLY the specific AOM email from the items list
+          4. Close the dropdown
+
+        Falls back to the Filters pane filter card if the slicer approach fails.
+        Uses [role="option"] selectors throughout — this is safe because:
+          - Slicer/filter items have role="option"
+          - Data table cells have role="gridcell" → they will NEVER be clicked
+        """
+        page = self._page
+
+        # ── Primary: interact with the slicer dropdown on the canvas ──────────
+        log.info("  Step A: Opening AOM Mail Id slicer dropdown...")
+
+        SLICER_TRIGGERS = [
+            '[role="combobox"]',
+            '[aria-haspopup="listbox"]',
+            '[aria-haspopup="true"]',
+            '.slicerDropdownMenu',
+            '.slicerDropdown [tabindex]',
+        ]
+        slicer_opened = False
+        for sel in SLICER_TRIGGERS:
+            try:
+                el = page.locator(sel).first
+                if el.is_visible(timeout=2_000):
+                    el.click(force=True)
+                    page.wait_for_timeout(1_200)
+                    slicer_opened = True
+                    log.info(f"  Slicer dropdown opened (selector: {sel})")
+                    break
+            except Exception:
+                continue
+
+        if slicer_opened:
+            # ── Wait for dropdown items to load ───────────────────────────────
+            # IMPORTANT: when there's no identity prompt, the report loads faster
+            # and the slicer dropdown items may not be in the DOM yet when we
+            # immediately search. We must wait for them to appear first.
+            try:
+                page.wait_for_selector('[role="option"]', timeout=8_000)
+                log.info("  Slicer items loaded and ready.")
+            except Exception:
+                log.warning("  [role='option'] items not found after 8s — trying anyway...")
+
+            # ── Deselect "Select all" FIRST ──────────────────────────────────
+            # Power BI slicer: when "All" is selected, we must uncheck "Select all"
+            # before checking a single value — otherwise the single value is ignored.
+            DESELECT_SELS = [
+                '[role="option"]:has-text("Select all")',
+                '[role="option"]:has-text("(Select all)")',
+                '[role="listbox"] li:has-text("Select all")',
+                'div[role="listbox"] span:has-text("Select all")',
+            ]
+            deselected = False
+            for sel in DESELECT_SELS:
+                try:
+                    el = page.locator(sel).first
+                    if el.is_visible(timeout=2_000):
+                        el.click(force=True)
+                        page.wait_for_timeout(700)
+                        deselected = True
+                        log.info(f"  'Select all' deselected ✓")
+                        break
+                except Exception:
+                    continue
+            if not deselected:
+                log.warning("  'Select all' not found in slicer — may not be needed.")
+
+            # ── Select the specific AOM email ─────────────────────────────────
+            EMAIL_SELS = [
+                f'[role="option"]:has-text("{filter_email}")',
+                f'[role="listbox"] li:has-text("{filter_email}")',
+                f'div[role="listbox"] span:has-text("{filter_email}")',
+            ]
+            for sel in EMAIL_SELS:
+                try:
+                    el = page.locator(sel).first
+                    if el.is_visible(timeout=8_000):   # ← increased from 3s to 8s
+                        el.click(force=True)
+                        page.wait_for_timeout(1_500)
+                        log.info(f"  Selected '{filter_email}' in slicer ✓")
+                        # Close the dropdown — Escape first, then confirm it's closed.
+                        # Power BI's custom dropdown may not respond to Escape alone,
+                        # so we check and click the trigger again if still open.
+                        page.keyboard.press("Escape")
+                        page.wait_for_timeout(800)
+                        try:
+                            if page.locator('[role="option"]').first.is_visible(timeout=600):
+                                log.info("  Dropdown still open — clicking trigger to close...")
+                                page.locator('[role="combobox"]').first.click(force=True)
+                                page.wait_for_timeout(600)
+                        except Exception:
+                            pass
+                        return True
+                except Exception:
+                    continue
+
+            log.warning("  Could not select email from slicer dropdown. Trying Filters pane...")
+
+        # ── Fallback: Filters pane filter card ────────────────────────────────
+        log.info(f"  Step B: Trying Filters pane card for '{PBI_FILTER_COLUMN}'...")
+
+        card_found = False
+        try:
+            card = page.get_by_text(PBI_FILTER_COLUMN, exact=True).first
+            card.wait_for(state="visible", timeout=5_000)
+            card.click(force=True)
+            page.wait_for_timeout(1_500)
+            card_found = True
+            log.info(f"  Filter card '{PBI_FILTER_COLUMN}' expanded.")
+        except Exception:
+            pass
+
+        if not card_found:
+            log.error(f"  '{PBI_FILTER_COLUMN}' filter card not found.")
+            return False
+
+        # Deselect "(Select all)" in the filter card
+        for text in ["(Select all)", "Select all"]:
+            try:
+                el = page.get_by_text(text, exact=True).first
+                if el.is_visible(timeout=2_000):
+                    el.click(force=True)
+                    page.wait_for_timeout(700)
+                    log.info(f"  Deselected '{text}' in filter card ✓")
+                    break
+            except Exception:
+                continue
+
+        # Select the email using role="option" — safe, won't hit data table
+        for sel in [
+            f'[role="option"]:has-text("{filter_email}")',
+            f'label:has-text("{filter_email}")',
+        ]:
+            try:
+                el = page.locator(sel).first
+                if el.is_visible(timeout=3_000):
+                    el.click(force=True)
+                    page.wait_for_timeout(1_500)
+                    log.info(f"  Selected '{filter_email}' in filter card ✓")
+                    return True
+            except Exception:
+                continue
+
+        log.error(
+            f"  All approaches failed.\n"
+            f"  Could not set '{PBI_FILTER_COLUMN}' = '{filter_email}'.\n"
+            f"  Email will NOT be sent."
+        )
+        return False
+
+
+    def _verify_filter_on_screen(self, filter_email: str, aom_name: str,
+                                  other_emails: list) -> bool:
+        """
+        Screenshot the current report state and read all visible page text.
+
+        Checks:
+          1. Expected AOM email IS visible in the data → proves filter is active
+          2. No OTHER AOM's email is visible in the data → proves no wrong data
+
+        Returns True  → safe to export
+        Returns False → conflict or cannot verify → email is NOT sent, counts as FAIL
+        Reason is always logged explicitly.
+        """
+        page = self._page
+        page.wait_for_timeout(3_000)   # let all visuals fully render
+
+        # Always take a screenshot (audit trail + debugging)
+        # Strip + replace spaces: "Ritesh Soni " → "verify_Ritesh_Soni.png"
+        # Windows rejects filenames ending with space (Errno 22).
+        safe = "".join(c if c.isalnum() or c in " _-" else "_" for c in aom_name.strip())
+        safe = safe.replace(" ", "_")
+        os.makedirs(EXPORTS_DIR, exist_ok=True)
+        shot_path = os.path.join(EXPORTS_DIR, f"verify_{safe}.png")
+
+        try:
+            page.screenshot(path=shot_path, full_page=False)
+            log.info(f"  Verification screenshot: {os.path.basename(shot_path)}")
+        except Exception as e:
+            log.warning(f"  Screenshot failed: {e}")
+
+        # Read all visible text from the page
+        # First close any open slicer dropdown — unchecked options appear as text
+        # and would be mistaken for conflicting data if not dismissed first.
+        try:
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(300)
+        except Exception:
+            pass
+        try:
+            page_text = page.evaluate("() => document.body.innerText")
+
+        except Exception as e:
+            log.error(
+                f"  VERIFICATION FAILED — {aom_name}:\n"
+                f"  Reason: Cannot read page content ({e})\n"
+                f"  Email will NOT be sent — cannot confirm data is correct."
+            )
+            return False
+
+        page_text_lower = page_text.lower()
+        expected_lower  = filter_email.lower()
+        others_lower    = [e.lower() for e in other_emails]
+
+        # Check 1: any OTHER AOM's email visible in the report data?
+        conflicting = [e for e in others_lower if e in page_text_lower]
+        if conflicting:
+            log.error(
+                f"\n"
+                f"  ╔══ DATA CONFLICT — EMAIL WILL NOT BE SENT ══════╗\n"
+                f"  ║  AOM              : {aom_name}\n"
+                f"  ║  Expected filter  : {filter_email}\n"
+                f"  ║  Conflicting data : {', '.join(set(conflicting))}\n"
+                f"  ║  Report contains another AOM's data. Aborting.\n"
+                f"  ╚═════════════════════════════════════════════════╝"
+            )
+            return False
+
+        # Check 2: the expected email must be visible (proves filter worked)
+        if expected_lower not in page_text_lower:
+            log.error(
+                f"  VERIFICATION FAILED — {aom_name}:\n"
+                f"  Reason: '{filter_email}' not found in visible report data.\n"
+                f"  The filter may not have been applied or data is not loaded.\n"
+                f"  Email will NOT be sent."
+            )
+            return False
+
+        log.info(
+            f"  Data verification ✓ — only {filter_email} found.\n"
+            f"  No conflicting AOM data. Safe to export."
+        )
+        return True
+
     def _trigger_pdf_export(self, page, fpath: str, aom_name: str) -> str:
         """
         Drive the Power BI UI to export the report as PDF.
 
-        The Export button is a standalone button in the toolbar
-        (confirmed from screenshots) — NOT inside the File menu.
-        File menu only has: Download this file / Print / Embed / QR code.
+        The Export button is a standalone button in the toolbar —
+        NOT inside the File menu (File menu has no Export option here).
 
-        Flow: dismiss popups → click Export (toolbar) → click PDF → download
+        Flow: dismiss popups → click Export (toolbar) → click PDF →
+              confirm dialog if shown → wait for download.
+
+        IMPORTANT: page.expect_download() must be open BEFORE the action
+        that triggers the download, not after. Both the PDF click and the
+        confirm-dialog click are wrapped inside expect_download so whichever
+        one starts the file download is captured correctly.
         """
+
         # Step 1: Dismiss Copilot dialog, CDK overlays, any popups
         self._dismiss_popups()
         page.wait_for_timeout(500)
 
-        # Step 2: Click the Export toolbar button directly
-        # It sits in the top command bar alongside File, Share, Explore, etc.
+        # Step 2: Click the Export toolbar button
         log.info("  Clicking Export toolbar button...")
         page.locator(
             '[aria-label="Export"], '
@@ -448,34 +797,40 @@ class PowerBIExporter:
         ).first.click(force=True, timeout=10_000)
         page.wait_for_timeout(800)
 
-        # Step 3: Select PDF from the dropdown that appears
-        log.info("  Selecting PDF...")
-        page.locator(
-            '[role="menuitem"]:has-text("PDF"), '
-            '[role="option"]:has-text("PDF"), '
-            'button:has-text("PDF"), '
-            'a:has-text("PDF")'
-        ).first.click(force=True, timeout=8_000)
-        page.wait_for_timeout(1_000)
+        # Step 3 + 4: Open expect_download FIRST, then click PDF and handle dialog.
+        # Power BI either downloads immediately on PDF click, or shows a dialog first.
+        # expect_download captures whichever action triggers the actual download.
+        log.info("  Selecting PDF and waiting for download...")
+        os.makedirs(EXPORTS_DIR, exist_ok=True)
 
-        # Step 4: If an export options dialog appears, confirm it
-        # (Some PBI setups show "Export" confirmation, others start download immediately)
-        try:
-            confirm_btn = page.locator(
-                'button:has-text("Export")'
-            ).last
-            confirm_btn.wait_for(timeout=5_000, state="visible")
-            with page.expect_download(timeout=EXPORT_TIMEOUT) as dl_info:
+        with page.expect_download(timeout=EXPORT_TIMEOUT) as dl_info:
+            # Click PDF in the dropdown
+            page.locator(
+                '[role="menuitem"]:has-text("PDF"), '
+                '[role="option"]:has-text("PDF"), '
+                'button:has-text("PDF"), '
+                'a:has-text("PDF")'
+            ).first.click(force=True, timeout=8_000)
+            page.wait_for_timeout(1_200)
+
+            # If Power BI shows an export options/confirmation dialog, click Export in it
+            try:
+                confirm_btn = page.locator(
+                    '[role="dialog"] button:has-text("Export"), '
+                    '.ms-Dialog button:has-text("Export"), '
+                    'button[data-testid*="export-confirm"]'
+                ).first
+                confirm_btn.wait_for(timeout=6_000, state="visible")
                 confirm_btn.click(force=True)
-        except PWTimeout:
-            # No confirmation dialog — download already started
-            with page.expect_download(timeout=EXPORT_TIMEOUT) as dl_info:
-                pass   # download was already triggered by the PDF click
+                log.info("  Export dialog confirmed.")
+            except PWTimeout:
+                log.info("  No export confirmation dialog — download started directly.")
 
         dl = dl_info.value
         dl.save_as(fpath)
         log.info(f"  PDF saved: {os.path.basename(fpath)}")
         return fpath
+
 
     def _debug_screenshot(self, page, aom_name: str) -> None:
         """Save a screenshot to exports/ to help debug failures."""
