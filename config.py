@@ -13,12 +13,22 @@ EXPORTS_DIR = os.path.join(BASE_DIR, "exports")
 LOG_FILE    = os.path.join(BASE_DIR, "automation.log")
 
 # == Power BI (no URL needed - script discovers it automatically) ==============
-PBI_WORKSPACE_NAME = "AutoEmails"         # Exact workspace name in Power BI Service
-PBI_REPORT_NAME    = "Franchise DataSet"  # Exact report name in that workspace
-
-# Exact table + column in the Power BI data model used for RLS URL filtering
-PBI_FILTER_TABLE  = "Store Master"
-PBI_FILTER_COLUMN = "AOM Mail Id"
+# List of reports to export and attach to the email for each AOM.
+REPORTS = [
+    {
+        "workspace":     "AutoEmails",
+        "name":          "Franchise DataSet",
+        "filter_table":  "Store Master",
+        "filter_column": "AOM Mail Id",
+    }
+    # To add more reports, simply copy the dictionary above:
+    # {
+    #     "workspace":     "Another Workspace",
+    #     "name":          "Another Report",
+    #     "filter_table":  "Store Master",
+    #     "filter_column": "AOM Mail Id",
+    # }
+]
 
 # == Zoho SMTP =================================================================
 SMTP_HOST         = "smtp.zoho.in"

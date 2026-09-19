@@ -161,32 +161,44 @@ def main():
     success, fail = 0, 0
 
     with PowerBIExporter(pbi_email, pbi_password) as exporter:
+        from config import REPORTS
         for aom in aoms:
             name  = aom["name"]
             fmail = aom["filter_email"]
             dmail = aom["delivery_email"]
 
-            log.info(f"\nProcessing: {name}")
+            log.info(f"\nProcessing AOM: {name}")
 
             other_emails = [a["filter_email"] for a in aoms if a["filter_email"] != fmail]
+            
+            pdfs = []
+            for report_cfg in REPORTS:
+                report_name = report_cfg["name"]
+                log.info(f"  -> Exporting report: {report_name}")
+                
+                pdf = exporter.export_report(
+                    filter_email=fmail,
+                    aom_name=name,
+                    date_str=today,
+                    other_emails=other_emails,
+                    report_cfg=report_cfg
+                )
 
-            pdf = exporter.export_report(
-                filter_email=fmail,
-                aom_name=name,
-                date_str=today,
-                other_emails=other_emails,
-            )
+                if pdf:
+                    pdfs.append(pdf)
+                else:
+                    log.error(f"  Export failed for report '{report_name}' -- skipping this attachment for {name}")
 
-            if not pdf:
-                log.error(f"  Export failed -- skipping email for {name}")
+            if not pdfs:
+                log.error(f"  All exports failed -- skipping email for {name}")
                 fail += 1
                 continue
 
             try:
                 subject = EMAIL_SUBJECT.format(aom_name=name, date=today)
                 body    = EMAIL_BODY.format(aom_name=name, date=today)
-                mailer.send(dmail, subject, body, pdf)
-                log.info(f"  Email sent to {dmail}")
+                mailer.send(dmail, subject, body, attachments=pdfs)
+                log.info(f"  Email sent to {dmail} with {len(pdfs)} attachment(s)")
                 success += 1
             except Exception as e:
                 log.error(f"  Email failed for {name}: {e}")

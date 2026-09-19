@@ -15,11 +15,7 @@ from typing import Optional
 
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
-from config import (
-    PBI_WORKSPACE_NAME, PBI_REPORT_NAME,
-    PBI_FILTER_TABLE, PBI_FILTER_COLUMN,
-    EXPORTS_DIR
-)
+from config import EXPORTS_DIR
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +38,7 @@ class PowerBIExporter:
         self._browser    = None
         self._context    = None
         self._page       = None
-        self._report_url = None   # discovered after first login
+        self._report_urls = {}   # cache: (workspace, report_name) -> url
 
     # -- Context manager -------------------------------------------------------
 
@@ -70,11 +66,7 @@ class PowerBIExporter:
 
         log.info("Browser started (headless). Logging into Power BI...")
         self._login()
-
-        log.info(f'Navigating to workspace "{PBI_WORKSPACE_NAME}" -> report "{PBI_REPORT_NAME}"...')
-        self._report_url = self._discover_report_url()
-        log.info(f"Report URL acquired: {self._report_url}")
-
+        # Report URL discovery is now done dynamically per report in export_report.
         return self
 
     def __exit__(self, *args) -> None:
@@ -144,6 +136,25 @@ class PowerBIExporter:
         log.info("  Navigating to Power BI...")
         page.goto("https://app.powerbi.com/", timeout=NAV_TIMEOUT, wait_until="domcontentloaded")
         page.wait_for_timeout(3_000)
+
+        # Step 6: Handle potential Power BI sign-up / confirmation interstitial
+        # Sometimes Power BI asks to re-enter email: "Enter your work or school email..."
+        try:
+            interstitial_email = page.locator('input[placeholder="Enter email"], input[type="email"]').first
+            if interstitial_email.is_visible(timeout=3_000):
+                log.info("  Power BI interstitial detected. Re-submitting email...")
+                interstitial_email.fill(self.username)
+                
+                # Try clicking Submit button if it exists
+                submit_btn = page.locator('button:has-text("Submit")').first
+                if submit_btn.is_visible(timeout=1_000):
+                    submit_btn.click()
+                else:
+                    page.keyboard.press("Enter")
+                    
+                page.wait_for_timeout(5_000)
+        except Exception:
+            pass
 
         if "app.powerbi.com" not in page.url:
             os.makedirs(EXPORTS_DIR, exist_ok=True)
@@ -252,8 +263,7 @@ class PowerBIExporter:
 
     # -- Report URL Discovery --------------------------------------------------
 
-    def _discover_report_url(self) -> str:
-
+    def _discover_report_url(self, workspace: str, report_name: str) -> str:
         """
         Find the workspace and report by name, then return the base report URL.
 
@@ -263,21 +273,15 @@ class PowerBIExporter:
         page = self._page
 
         # Dismiss any welcome/tour/modal dialogs that Power BI shows after login
-        try:
-            page.keyboard.press("Escape")
-            page.wait_for_timeout(800)
-        except Exception:
-            pass
-
         # -- Step 1: Find the workspace link and extract its URL ---------------
-        log.info(f'  Looking for workspace "{PBI_WORKSPACE_NAME}"...')
+        log.info(f'  Looking for workspace "{workspace}"...')
 
         # Try the sidebar first (workspace is often pinned there)
         ws_href = None
         ws_selectors = [
-            f'a[aria-label="{PBI_WORKSPACE_NAME}"]',
-            f'a[title="{PBI_WORKSPACE_NAME}"]',
-            f'a:has-text("{PBI_WORKSPACE_NAME}")',
+            f'a[aria-label="{workspace}"]',
+            f'a[title="{workspace}"]',
+            f'a:has-text("{workspace}")',
         ]
         for sel in ws_selectors:
             try:
@@ -315,7 +319,7 @@ class PowerBIExporter:
             os.makedirs(EXPORTS_DIR, exist_ok=True)
             page.screenshot(path=os.path.join(EXPORTS_DIR, "debug_workspace.png"))
             raise RuntimeError(
-                f'Could not find workspace "{PBI_WORKSPACE_NAME}". '
+                f'Could not find workspace "{workspace}". '
                 f'Screenshot saved to exports/debug_workspace.png'
             )
 
@@ -327,13 +331,13 @@ class PowerBIExporter:
         page.wait_for_timeout(4_000)   # wait for workspace content list to render
 
         # -- Step 2: Find the report link and extract its URL ------------------
-        log.info(f'  Looking for report "{PBI_REPORT_NAME}"...')
+        log.info(f'  Looking for report "{report_name}"...')
 
         report_href = None
         report_selectors = [
-            f'a[aria-label="{PBI_REPORT_NAME}"]',
-            f'a[title="{PBI_REPORT_NAME}"]',
-            f'a:has-text("{PBI_REPORT_NAME}")',
+            f'a[aria-label="{report_name}"]',
+            f'a[title="{report_name}"]',
+            f'a:has-text("{report_name}")',
         ]
         for sel in report_selectors:
             try:
@@ -349,7 +353,7 @@ class PowerBIExporter:
             os.makedirs(EXPORTS_DIR, exist_ok=True)
             page.screenshot(path=os.path.join(EXPORTS_DIR, "debug_report.png"))
             raise RuntimeError(
-                f'Could not find report "{PBI_REPORT_NAME}" in workspace "{PBI_WORKSPACE_NAME}". '
+                f'Could not find report "{report_name}" in workspace "{workspace}". '
                 f'Screenshot saved to exports/debug_report.png'
             )
 
@@ -369,43 +373,37 @@ class PowerBIExporter:
 
     # -- Export ----------------------------------------------------------------
 
-    def _build_filter_url(self, filter_value: str) -> str:
-        """
-        Append an OData URL filter to the report URL for the given AOM email.
-
-        Power BI URL filter spec:
-          - Spaces in table/column NAMES must be encoded as '_x0020_' (OData encoding)
-            NOT '%20' — Power BI silently ignores filters with %20 in identifiers.
-          - The email value goes inside single quotes as-is (no encoding needed).
-
-        Example output:
-          ?filter=Store_x0020_Master/AOM_x0020_Mail_x0020_Id eq 'aomnorth1@kisna.com'
-        """
-        table  = PBI_FILTER_TABLE.replace(" ", "_x0020_")
-        column = PBI_FILTER_COLUMN.replace(" ", "_x0020_")
-        expr   = f"{table}/{column} eq '{filter_value}'"
-        filter_url = f"{self._report_url}?filter={expr}"
-        log.info(f"  Filter URL: ...?filter={table}/{column} eq '{filter_value}'")
-        return filter_url
-
 
     def export_report(self, filter_email: str, aom_name: str, date_str: str,
-                      other_emails: list = None) -> Optional[str]:
+                      other_emails: list = None, report_cfg: dict = None) -> Optional[str]:
         """
         For this AOM:
-          1. Navigate to the base report URL (clean state)
-          2. Set the AOM Mail Id filter directly via the Filters pane UI
-          3. Screenshot + verify only the expected AOM's data is on screen
-          4. Export as PDF
+          1. Discover/fetch the report URL using report_cfg
+          2. Navigate to the base report URL (clean state)
+          3. Set the filter directly via the UI
+          4. Screenshot + verify only the expected AOM's data is on screen
+          5. Export as PDF
 
         Returns local PDF path on success.
-        Returns None on failure — main.py counts as FAIL, email is NOT sent.
+        Returns None on failure.
         """
+        if not report_cfg:
+            raise ValueError("report_cfg is required")
+
+        workspace = report_cfg["workspace"]
+        report_name = report_cfg["name"]
+        filter_column = report_cfg["filter_column"]
+
+        # Cache check for URL discovery
+        if (workspace, report_name) not in self._report_urls:
+            self._report_urls[(workspace, report_name)] = self._discover_report_url(workspace, report_name)
+        report_url = self._report_urls[(workspace, report_name)]
+
         page = self._page
 
         # ── Step 1: Navigate to base report URL (flush any residual filter) ───
         log.info(f"  Navigating to base report URL (clean state)...")
-        page.goto(self._report_url, timeout=NAV_TIMEOUT, wait_until="domcontentloaded")
+        page.goto(report_url, timeout=NAV_TIMEOUT, wait_until="domcontentloaded")
         page.wait_for_timeout(4_000)
         self._handle_identity_prompt()
 
@@ -415,21 +413,17 @@ class PowerBIExporter:
         page.wait_for_timeout(1_500)
 
         # ── Step 3: Set filter via Filters pane UI ────────────────────────────
-        log.info(f"  Setting filter: {PBI_FILTER_COLUMN} = {filter_email}")
-        if not self._apply_filter_via_pane(filter_email):
+        log.info(f"  Setting filter: {filter_column} = {filter_email}")
+        if not self._apply_filter_via_pane(filter_email, filter_column):
             log.error(
                 f"  FILTER APPLY FAILED — {aom_name}:\n"
-                f"  Could not set '{PBI_FILTER_COLUMN}' = '{filter_email}' in Filters pane.\n"
-                f"  Email will NOT be sent."
+                f"  Could not set '{filter_column}' = '{filter_email}' in UI.\n"
+                f"  This report will NOT be attached."
             )
-            self._debug_screenshot(page, aom_name)
+            self._debug_screenshot(page, f"{aom_name}_{report_name}")
             return None
 
         # ── Smart wait: poll until other AOM emails are gone from the page ────
-        # Power BI fires an async DAX query after a slicer change — the data table
-        # can take anywhere from 3 to 30+ seconds to refresh depending on server load.
-        # We poll every 5 seconds and exit as soon as the data looks clean.
-        # Max wait: 90 seconds — after that we proceed and let verify() decide.
         MAX_WAIT_SEC  = 90
         POLL_INTERVAL = 5_000   # ms
         elapsed_sec   = 0
@@ -440,9 +434,6 @@ class PowerBIExporter:
             elapsed_sec += POLL_INTERVAL // 1_000
             try:
                 # ── Close slicer dropdown before reading page text ─────────────
-                # The dropdown shows ALL option values (including unchecked ones).
-                # If it's open, innerText will contain other AOM emails that are
-                # just unchecked options — NOT actual data — causing false conflicts.
                 page.keyboard.press("Escape")
                 page.wait_for_timeout(200)
 
@@ -461,20 +452,20 @@ class PowerBIExporter:
             except Exception:
                 pass   # page eval failed — keep waiting
 
-
-        if not self._verify_filter_on_screen(filter_email, aom_name, other_emails or []):
-            return None   # fail logged inside; main.py: fail += 1, email skipped
+        if not self._verify_filter_on_screen(filter_email, f"{aom_name}_{report_name}", other_emails or []):
+            return None
 
         # ── Step 6: Export ────────────────────────────────────────────────────
-        safe  = "".join(c if c.isalnum() or c in " _-" else "_" for c in aom_name)
-        fname = f"{safe.replace(' ', '_')}_{date_str}.pdf"
+        safe_aom  = "".join(c if c.isalnum() or c in " _-" else "_" for c in aom_name).strip().replace(" ", "_")
+        safe_rep  = "".join(c if c.isalnum() or c in " _-" else "_" for c in report_name).strip().replace(" ", "_")
+        fname = f"{safe_aom}_{safe_rep}_{date_str}.pdf"
         fpath = os.path.join(EXPORTS_DIR, fname)
 
         try:
-            return self._trigger_pdf_export(page, fpath, aom_name)
+            return self._trigger_pdf_export(page, fpath, f"{aom_name}_{report_name}")
         except Exception as e:
             log.error(f"  Export failed: {e}")
-            self._debug_screenshot(page, aom_name)
+            self._debug_screenshot(page, f"{aom_name}_{report_name}")
             return None
 
 
@@ -525,130 +516,260 @@ class PowerBIExporter:
         return False
 
 
-    def _apply_filter_via_pane(self, filter_email: str) -> bool:
+    def _try_slicer(self, filter_email: str) -> bool:
         """
-        Set the AOM Mail Id filter directly through the Power BI Filters pane UI.
-
-        Interacts with the AOM Mail Id slicer dropdown visual on the canvas.
-
-        Flow:
-          1. Click the slicer dropdown (showing "All") to open it
-          2. Deselect "Select all" — removes the "All" selection completely
-          3. Click ONLY the specific AOM email from the items list
-          4. Close the dropdown
-
-        Falls back to the Filters pane filter card if the slicer approach fails.
-        Uses [role="option"] selectors throughout — this is safe because:
-          - Slicer/filter items have role="option"
-          - Data table cells have role="gridcell" → they will NEVER be clicked
+        Visibility-Agnostic Slicer Hunter:
+        1. Forcefully unhides all visuals via JS (neutralizes Selection Pane hiding).
+           This only affects our local browser; the backend PDF export remains clean.
+        2. Finds all comboboxes, opens them one by one, and checks if they contain
+           our target email to ensure we interact with the correct slicer.
         """
         page = self._page
+        
+        # ── 1. Force unhide & expose slicers ──────────────────────────────────
+        log.info("  Neutralizing any hidden visibility on visuals via JS...")
+        try:
+            page.evaluate("""
+                () => {
+                    // 1. Make everything block/visible to override Selection Pane
+                    document.querySelectorAll('.visual, .visual-container').forEach(el => {
+                        el.style.setProperty('display', 'block', 'important');
+                        el.style.setProperty('visibility', 'visible', 'important');
+                    });
+                    
+                    // 2. Make non-slicers transparent and unclickable so they don't block clicks
+                    //    Make slicers opaque, on top, and clickable.
+                    document.querySelectorAll('.visual, .visual-container').forEach(el => {
+                        let isSlicer = el.querySelector('[role="combobox"]') || 
+                                       el.querySelector('.slicerDropdownMenu') || 
+                                       el.querySelector('.slicer-container') ||
+                                       el.querySelector('.visual-slicer');
+                        if (!isSlicer) {
+                            // It's a shape, table, or other visual -> Ghost it
+                            el.style.setProperty('pointer-events', 'none', 'important');
+                            el.style.setProperty('opacity', '0.1', 'important');
+                            el.style.setProperty('z-index', '1', 'important');
+                        } else {
+                            // It's a slicer -> Bring to front
+                            el.style.setProperty('pointer-events', 'auto', 'important');
+                            el.style.setProperty('opacity', '1', 'important');
+                            el.style.setProperty('z-index', '2147483647', 'important');
+                        }
+                    });
+                }
+            """)
+            page.wait_for_timeout(1_000)
+        except Exception as e:
+            log.warning(f"  JS unhide failed (ignoring): {e}")
 
-        # ── Primary: interact with the slicer dropdown on the canvas ──────────
-        log.info("  Step A: Opening AOM Mail Id slicer dropdown...")
-
+        # ── 2. Find all potential slicer triggers ─────────────────────────────
         SLICER_TRIGGERS = [
-            '[role="combobox"]',
-            '[aria-haspopup="listbox"]',
-            '[aria-haspopup="true"]',
+            '.visual [role="combobox"]',
+            '.visual [aria-haspopup="listbox"]',
+            '.visual [aria-haspopup="true"]',
             '.slicerDropdownMenu',
-            '.slicerDropdown [tabindex]',
         ]
-        slicer_opened = False
+        
+        potential_triggers = []
         for sel in SLICER_TRIGGERS:
             try:
-                el = page.locator(sel).first
-                if el.is_visible(timeout=2_000):
-                    el.click(force=True)
-                    page.wait_for_timeout(1_200)
-                    slicer_opened = True
-                    log.info(f"  Slicer dropdown opened (selector: {sel})")
+                page.locator(sel).first.wait_for(state="attached", timeout=2_000)
+                elements = page.locator(sel).all()
+                potential_triggers.extend(elements)
+            except Exception:
+                pass
+
+        if not potential_triggers:
+            log.warning("  No slicer triggers found in DOM.")
+            return False
+
+        log.info(f"  Found {len(potential_triggers)} potential slicer(s). Hunting for '{filter_email}'...")
+
+        target_slicer = None
+        
+        # ── 3. Hunt for the correct slicer ────────────────────────────────────
+        for idx, el in enumerate(potential_triggers):
+            try:
+                # ── BRING TO FRONT ──
+                page.evaluate("""(node) => {
+                    let curr = node;
+                    while (curr && curr !== document.body) {
+                        curr.style.setProperty('z-index', '2147483647', 'important');
+                        curr.style.setProperty('opacity', '1', 'important');
+                        curr.style.setProperty('visibility', 'visible', 'important');
+                        curr.style.setProperty('pointer-events', 'auto', 'important');
+                        // Do NOT set display: block here as it destroys Flexbox/Grid layouts!
+                        curr = curr.parentElement;
+                    }
+                }""", el)
+                page.wait_for_timeout(300)
+
+                # Open dropdown using multiple methods to bypass hit-testing completely
+                try:
+                    el.focus()
+                    page.wait_for_timeout(200)
+                    page.keyboard.press("Alt+ArrowDown")
+                    page.wait_for_timeout(300)
+                    page.keyboard.press("Enter")
+                    page.wait_for_timeout(300)
+                    page.keyboard.press("Space")
+                except Exception as e:
+                    log.warning(f"  Keyboard focus failed: {e}")
+                
+                # Also try the mouse click
+                el.click(force=True, timeout=2_000)
+                page.wait_for_timeout(2_000)
+                
+                # Check if it rendered ANY options
+                option_sels = '[role="option"], [role="listbox"] li, div[role="listbox"] span'
+                if page.locator(option_sels).count() == 0:
+                    page.keyboard.press("Escape")
+                    page.wait_for_timeout(500)
+                    continue
+                    
+                # Look for our specific email in this dropdown
+                email_sels = [
+                    f'[role="option"]:has-text("{filter_email}")',
+                    f'[role="listbox"] li:has-text("{filter_email}")',
+                    f'div[role="listbox"] span:has-text("{filter_email}")'
+                ]
+                
+                found_email = False
+                for sel in email_sels:
+                    if page.locator(sel).count() > 0:
+                        found_email = True
+                        break
+                        
+                if found_email:
+                    log.info(f"  Found the correct slicer containing '{filter_email}'.")
+                    target_slicer = el
+                    break
+                else:
+                    # Not the right slicer
+                    page.keyboard.press("Escape")
+                    page.wait_for_timeout(500)
+            except Exception:
+                continue
+
+        if not target_slicer:
+            log.warning("  None of the slicers contained the target email.")
+            return False
+
+        # ── 4. We have the right slicer open. Apply the filter. ───────────────
+        # Deselect "Select all" FIRST
+        for sel in [
+            '[role="option"]:has-text("Select all")',
+            '[role="option"]:has-text("(Select all)")'
+        ]:
+            try:
+                if page.locator(sel).count() > 0:
+                    page.locator(sel).first.click(force=True, timeout=2_000)
+                    page.wait_for_timeout(800)
+                    log.info("  'Select all' deselected ✓")
                     break
             except Exception:
                 continue
 
-        if slicer_opened:
-            # ── Wait for dropdown items to load ───────────────────────────────
-            # IMPORTANT: when there's no identity prompt, the report loads faster
-            # and the slicer dropdown items may not be in the DOM yet when we
-            # immediately search. We must wait for them to appear first.
+        # Select the specific AOM email
+        email_sels = [
+            f'[role="option"]:has-text("{filter_email}")',
+            f'[role="listbox"] li:has-text("{filter_email}")',
+            f'div[role="listbox"] span:has-text("{filter_email}")'
+        ]
+        
+        email_clicked = False
+        for sel in email_sels:
             try:
-                page.wait_for_selector('[role="option"]', timeout=8_000)
-                log.info("  Slicer items loaded and ready.")
+                if page.locator(sel).count() > 0:
+                    email_opt = page.locator(sel).first
+                    
+                    # Try JS click first (bulletproof hit-testing bypass)
+                    try:
+                        email_opt.evaluate("el => el.click()")
+                        page.wait_for_timeout(500)
+                    except Exception:
+                        pass
+                        
+                    # Also try Playwright click
+                    try:
+                        email_opt.click(force=True, timeout=2_000)
+                    except Exception:
+                        pass
+                        
+                    page.wait_for_timeout(1_500)
+                    log.info(f"  Selected '{filter_email}' in slicer ✓")
+                    email_clicked = True
+                    break
             except Exception:
-                log.warning("  [role='option'] items not found after 8s — trying anyway...")
+                continue
+                
+        if not email_clicked:
+            log.warning(f"  Failed to click email option.")
+            page.keyboard.press("Escape")
+            return False
+            
+        # Close the dropdown
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(800)
+        try:
+            if page.locator(option_sels).first.is_visible(timeout=600):
+                log.info("  Dropdown still open — clicking trigger to close...")
+                target_slicer.click(force=True, timeout=1_000)
+                page.wait_for_timeout(600)
+        except Exception:
+            pass
+        return True
 
-            # ── Deselect "Select all" FIRST ──────────────────────────────────
-            # Power BI slicer: when "All" is selected, we must uncheck "Select all"
-            # before checking a single value — otherwise the single value is ignored.
-            DESELECT_SELS = [
-                '[role="option"]:has-text("Select all")',
-                '[role="option"]:has-text("(Select all)")',
-                '[role="listbox"] li:has-text("Select all")',
-                'div[role="listbox"] span:has-text("Select all")',
-            ]
-            deselected = False
-            for sel in DESELECT_SELS:
-                try:
-                    el = page.locator(sel).first
-                    if el.is_visible(timeout=2_000):
-                        el.click(force=True)
-                        page.wait_for_timeout(700)
-                        deselected = True
-                        log.info(f"  'Select all' deselected ✓")
-                        break
-                except Exception:
-                    continue
-            if not deselected:
-                log.warning("  'Select all' not found in slicer — may not be needed.")
 
-            # ── Select the specific AOM email ─────────────────────────────────
-            EMAIL_SELS = [
-                f'[role="option"]:has-text("{filter_email}")',
-                f'[role="listbox"] li:has-text("{filter_email}")',
-                f'div[role="listbox"] span:has-text("{filter_email}")',
-            ]
-            for sel in EMAIL_SELS:
-                try:
-                    el = page.locator(sel).first
-                    if el.is_visible(timeout=8_000):   # ← increased from 3s to 8s
-                        el.click(force=True)
-                        page.wait_for_timeout(1_500)
-                        log.info(f"  Selected '{filter_email}' in slicer ✓")
-                        # Close the dropdown — Escape first, then confirm it's closed.
-                        # Power BI's custom dropdown may not respond to Escape alone,
-                        # so we check and click the trigger again if still open.
-                        page.keyboard.press("Escape")
-                        page.wait_for_timeout(800)
-                        try:
-                            if page.locator('[role="option"]').first.is_visible(timeout=600):
-                                log.info("  Dropdown still open — clicking trigger to close...")
-                                page.locator('[role="combobox"]').first.click(force=True)
-                                page.wait_for_timeout(600)
-                        except Exception:
-                            pass
-                        return True
-                except Exception:
-                    continue
+    def _apply_filter_via_pane(self, filter_email: str, filter_column: str) -> bool:
+        """
+        Set the AOM Mail Id filter directly through the Power BI Filters pane UI.
+        Falls back to Page 1 if the slicer isn't on the current page.
+        """
+        page = self._page
+        original_url = page.url
 
-            log.warning("  Could not select email from slicer dropdown. Trying Filters pane...")
+        # ── Primary: interact with the slicer dropdown on the current page ────
+        log.info("  Step A: Opening slicer dropdown on current page...")
+        if self._try_slicer(filter_email):
+            return True
 
-        # ── Fallback: Filters pane filter card ────────────────────────────────
-        log.info(f"  Step B: Trying Filters pane card for '{PBI_FILTER_COLUMN}'...")
+        # ── Fallback 1: Hidden Slicer on Page 1 ───────────────────────────────
+        log.info("  Slicer not found on current page. Trying Page 1 fallback...")
+        try:
+            # Click the first page tab (assuming it's Page 1)
+            page.locator('button[aria-label^="Page 1"], .pageNavigation button, .explorationContainer .navigation-node').first.click(timeout=5_000)
+            log.info("  Navigated to Page 1.")
+            page.wait_for_timeout(5_000)
+            
+            if self._try_slicer(filter_email):
+                log.info("  Successfully filtered via Page 1 slicer. Navigating back to original page...")
+                page.goto(original_url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT)
+                page.wait_for_timeout(4_000)
+                return True
+            else:
+                log.info("  Slicer not found or failed on Page 1 as well. Navigating back...")
+                page.goto(original_url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT)
+                page.wait_for_timeout(4_000)
+        except Exception as e:
+            log.warning(f"  Page 1 fallback failed: {e}")
 
+        # ── Fallback 2: Filters pane filter card ──────────────────────────────
+        log.info(f"  Step B: Trying Filters pane card for '{filter_column}'...")
         card_found = False
         try:
-            card = page.get_by_text(PBI_FILTER_COLUMN, exact=True).first
+            # We must search only inside the filter pane, otherwise we might click a table header
+            card = page.locator('filter-pane, .filterPane, [aria-label="Filters"]').get_by_text(filter_column, exact=True).first
             card.wait_for(state="visible", timeout=5_000)
             card.click(force=True)
             page.wait_for_timeout(1_500)
             card_found = True
-            log.info(f"  Filter card '{PBI_FILTER_COLUMN}' expanded.")
+            log.info(f"  Filter card '{filter_column}' expanded.")
         except Exception:
             pass
 
         if not card_found:
-            log.error(f"  '{PBI_FILTER_COLUMN}' filter card not found.")
+            log.error(f"  '{filter_column}' filter card not found.")
             return False
 
         # Deselect "(Select all)" in the filter card
@@ -680,7 +801,7 @@ class PowerBIExporter:
 
         log.error(
             f"  All approaches failed.\n"
-            f"  Could not set '{PBI_FILTER_COLUMN}' = '{filter_email}'.\n"
+            f"  Could not set '{filter_column}' = '{filter_email}'.\n"
             f"  Email will NOT be sent."
         )
         return False
