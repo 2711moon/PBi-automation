@@ -1,0 +1,5 @@
+﻿exports/
+*.xlsx
+~$*.xlsx
+*.log
+automation.log

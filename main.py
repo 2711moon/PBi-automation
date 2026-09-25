@@ -90,31 +90,42 @@ def prompt_credentials():
 
 
 def load_aoms():
-    """Read StoreMAster.xlsx and return a list of unique AOMs."""
-    wb  = openpyxl.load_workbook(STOREMASTER)
+    """Read Store Master.xlsx and return a list of unique AOMs.
+    
+    For each unique AOM, stores:
+      - name:           AOM full name (e.g. 'Kamal Tiwari')
+      - filter_email:   AOM Mail Id  (used when filter_column = 'AOM Mail Id')
+      - filter_name:    AOM name     (used when filter_column = 'AOM')
+      - delivery_email: AutoEmail    (who the report is sent to)
+    """
+
+    # data_only=True reads cached cell values instead of formula strings
+    wb  = openpyxl.load_workbook(STOREMASTER, data_only=True)
     ws  = wb.active
     hdr = [c.value for c in next(ws.iter_rows(min_row=1, max_row=1))]
 
-    idx_aom   = hdr.index("AOM")
-    idx_fmail = hdr.index("AOM Mail Id")   # RLS filter value
-    idx_email = hdr.index("Email")          # delivery address
+    idx_aom        = hdr.index("AOM")
+    idx_fmail      = hdr.index("AOM Mail Id")
+    idx_auto_email = hdr.index("AutoEmail")   # who receives the email
 
     seen, aoms = set(), []
     for row in ws.iter_rows(min_row=2, values_only=True):
-        aom_name  = row[idx_aom]
-        aom_mail  = row[idx_fmail]
-        del_email = row[idx_email]
-        if not (aom_name and aom_mail and del_email):
+        aom_name   = row[idx_aom]
+        aom_mail   = row[idx_fmail]
+        auto_email = row[idx_auto_email]
+        if not (aom_name and aom_mail and auto_email):
             continue
-        if aom_mail in seen:
+        if aom_name in seen:          # deduplicate by AOM name
             continue
-        seen.add(aom_mail)
+        seen.add(aom_name)
         aoms.append({
             "name":           str(aom_name).strip(),
-            "filter_email":   str(aom_mail).strip(),
-            "delivery_email": str(del_email).strip(),
+            "filter_email":   str(aom_mail).strip(),    # AOM Mail Id (fallback)
+            "filter_name":    str(aom_name).strip(),    # AOM name
+            "delivery_email": str(auto_email).strip(),
         })
     return aoms
+
 
 
 def cleanup_pdfs():
@@ -152,9 +163,9 @@ def main():
     # Step 3: Load AOMs
     aoms = load_aoms()
     today = date.today().strftime("%d-%b-%Y")
-    log.info(f"Loaded {len(aoms)} AOM(s) from StoreMAster.xlsx")
+    log.info(f"Loaded {len(aoms)} AOM(s) from Store Master.xlsx")
     for a in aoms:
-        log.info(f"  - {a['name']} | filter: {a['filter_email']} | send to: {a['delivery_email']}")
+        log.info(f"  - {a['name']} | filter: {a['filter_name']} | send to: {a['delivery_email']}")
 
     # Step 4 & 5: Log in, discover URL, export, email
     mailer        = Mailer()
@@ -164,23 +175,34 @@ def main():
         from config import REPORTS
         for aom in aoms:
             name  = aom["name"]
-            fmail = aom["filter_email"]
             dmail = aom["delivery_email"]
 
             log.info(f"\nProcessing AOM: {name}")
 
-            other_emails = [a["filter_email"] for a in aoms if a["filter_email"] != fmail]
-            
             pdfs = []
             for report_cfg in REPORTS:
-                report_name = report_cfg["name"]
-                log.info(f"  -> Exporting report: {report_name}")
-                
+                report_name   = report_cfg["name"]
+                filter_column = report_cfg.get("filter_column", "AOM")
+
+                # Pick the right filter value based on what the report's RLS uses
+                if filter_column == "AOM Mail Id":
+                    filter_value = aom["filter_email"]   # e.g. aomnorth1@kisna.com
+                else:
+                    filter_value = aom["filter_name"]    # e.g. Kamal Tiwari
+
+                # Build list of all other AOMs' filter values (for conflict-check in powerbi.py)
+                other_filters = [
+                    (a["filter_email"] if filter_column == "AOM Mail Id" else a["filter_name"])
+                    for a in aoms if a["name"] != name
+                ]
+
+                log.info(f"  -> Exporting report: {report_name} (filter: {filter_column} = {filter_value})")
+
                 pdf = exporter.export_report(
-                    filter_email=fmail,
+                    filter_email=filter_value,
                     aom_name=name,
                     date_str=today,
-                    other_emails=other_emails,
+                    other_emails=other_filters,
                     report_cfg=report_cfg
                 )
 

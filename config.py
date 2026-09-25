@@ -8,7 +8,7 @@ import os
 
 # == Paths =====================================================================
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
-STOREMASTER = os.path.join(BASE_DIR, "StoreMAster.xlsx")
+STOREMASTER = os.path.join(BASE_DIR, "Store Master.xlsx")
 EXPORTS_DIR = os.path.join(BASE_DIR, "exports")
 LOG_FILE    = os.path.join(BASE_DIR, "automation.log")
 
@@ -16,10 +16,11 @@ LOG_FILE    = os.path.join(BASE_DIR, "automation.log")
 # List of reports to export and attach to the email for each AOM.
 REPORTS = [
     {
-        "workspace":     "AutoEmails",
-        "name":          "Franchise DataSet",
+        "workspace":     "Franchise Operations",
+        "name":          "EBO Report -8 Day Wise Sale",
+        "url":           "https://app.powerbi.com/groups/81d975dc-05d1-4d4e-b805-f5886368e433/reports/ac85b822-51b2-46af-b84c-7b0a2f5df834/f23a123c62d0a018a02e",
         "filter_table":  "Store Master",
-        "filter_column": "AOM Mail Id",
+        "filter_column": "AOM",
     }
     # To add more reports, simply copy the dictionary above:
     # {
