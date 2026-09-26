@@ -1,4 +1,4 @@
-﻿"""
+"""
 powerbi.py -- Headless Power BI automation via Playwright.
 
 Responsibilities:
@@ -723,7 +723,7 @@ class PowerBIExporter:
                 pass
 
             # Wait 7 seconds for dropdown items to render
-            page.wait_for_timeout(4_000)
+            page.wait_for_timeout(7_000)
 
             # Scope options check to the VISIBLE dropdown container — not page-wide.
             # page.locator('[role="option"]') matches stale DOM from other controls.
@@ -900,7 +900,44 @@ class PowerBIExporter:
                 log.info("  Found slicer titled 'AOM'. Running select flow...")
                 if _open_and_select(trigger_el, "AOM slicer (named)"):
                     return True
-                log.info("  Named AOM slicer select failed. Falling back to general hunt...")
+
+                # ── Tier 2: Scoped DOM click on AOM container ─────────────────
+                # The slicer is hidden so the dropdown won't visually open, but
+                # Power BI keeps [role="option"] elements in the DOM. Force-click
+                # the matching option directly inside the AOM visual container.
+                log.info("  Tier 2: trying scoped DOM click inside AOM container...")
+                try:
+                    dom_clicked = page.evaluate("""
+                        (email) => {
+                            const titleEls = Array.from(document.querySelectorAll(
+                                '.visual-title, [class*="visualTitle"], [class*="title"] span, h2, h3, h4, label'
+                            ));
+                            const titleEl = titleEls.find(
+                                el => el.innerText && el.innerText.trim() === 'AOM'
+                            );
+                            if (!titleEl) return false;
+                            const container = titleEl.closest(
+                                '.visual-container, .visualContainer, [class*="visual"], [class*="Visual"]'
+                            );
+                            if (!container) return false;
+                            const opts = Array.from(container.querySelectorAll(
+                                '[role="option"], [role="listitem"], li, [class*="option"], [class*="item"]'
+                            )).filter(el => el.innerText && el.innerText.trim().includes(email));
+                            if (opts.length === 0) return false;
+                            opts[0].dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}));
+                            opts[0].click();
+                            return true;
+                        }
+                    """, filter_email)
+                    if dom_clicked:
+                        page.wait_for_timeout(1_500)
+                        log.info(f"  '{filter_email}' selected via AOM container DOM click \u2713")
+                        return True
+                    log.info("  Tier 2: option not found in AOM container DOM. Proceeding to general hunt.")
+                except Exception as e2:
+                    log.info(f"  Tier 2 DOM click failed ({e2}). Proceeding to general hunt.")
+
+                log.info("  Falling back to general hunt...")
             else:
                 log.info("  Slicer titled 'AOM' not found in DOM. Falling back to general hunt...")
         except Exception as e:
