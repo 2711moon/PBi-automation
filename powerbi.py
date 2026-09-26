@@ -263,7 +263,8 @@ class PowerBIExporter:
 
     # -- Report URL Discovery --------------------------------------------------
 
-    def _discover_report_url(self, workspace: str, report_name: str) -> str:
+    def _discover_report_url(self, workspace: str, report_name: str,
+                             known_url: str = None) -> str:
         """
         Navigate through the Power BI workspace to find the report and
         return the base report URL.
@@ -327,6 +328,18 @@ class PowerBIExporter:
         self._handle_identity_prompt()  # dismiss verify-identity dialog if it appears
         self._dismiss_popups()
 
+        # Session is now established via workspace navigation.
+        # If the report URL is known from config, use it directly
+        # (virtual-scroll list in workspace may not show all reports in DOM).
+        if known_url:
+            log.info(f'  Session established. Navigating to report via known URL...')
+            page.goto(known_url, timeout=NAV_TIMEOUT, wait_until="domcontentloaded")
+            page.wait_for_timeout(8_000)   # wait for all report visuals to initialise
+            self._handle_identity_prompt()
+            report_url = page.url.split("?")[0].rstrip("/")
+            log.info(f'  Report URL: {report_url}')
+            return report_url
+
         log.info(f'  Looking for report "{report_name}"...')
 
         report_href = None
@@ -387,10 +400,14 @@ class PowerBIExporter:
         report_name   = report_cfg["name"]
         filter_column = report_cfg.get("filter_column", "AOM")
 
-        # Step 1: Discover report URL via workspace navigation (cached after first call)
+        known_url = report_cfg.get("url")
+
+        # Step 1: Discover report URL (cached after first call).
+        # Always navigates through workspace first to establish a session,
+        # then uses known_url if available to bypass virtual-scroll list.
         if (workspace, report_name) not in self._report_urls:
             self._report_urls[(workspace, report_name)] = self._discover_report_url(
-                workspace, report_name
+                workspace, report_name, known_url=known_url
             )
         report_url = self._report_urls[(workspace, report_name)]
 
