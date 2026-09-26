@@ -901,41 +901,36 @@ class PowerBIExporter:
                 if _open_and_select(trigger_el, "AOM slicer (named)"):
                     return True
 
-                # ── Tier 2: Scoped DOM click on AOM container ─────────────────
+                # ── Tier 2: Direct DOM click on hidden slicer options ────────────
                 # The slicer is hidden so the dropdown won't visually open, but
-                # Power BI keeps [role="option"] elements in the DOM. Force-click
-                # the matching option directly inside the AOM visual container.
-                log.info("  Tier 2: trying scoped DOM click inside AOM container...")
-                try:
-                    dom_clicked = page.evaluate("""
-                        (email) => {
-                            const titleEls = Array.from(document.querySelectorAll(
-                                '.visual-title, [class*="visualTitle"], [class*="title"] span, h2, h3, h4, label'
-                            ));
-                            const titleEl = titleEls.find(
-                                el => el.innerText && el.innerText.trim() === 'AOM'
-                            );
-                            if (!titleEl) return false;
-                            const container = titleEl.closest(
-                                '.visual-container, .visualContainer, [class*="visual"], [class*="Visual"]'
-                            );
-                            if (!container) return false;
-                            const opts = Array.from(container.querySelectorAll(
-                                '[role="option"], [role="listitem"], li, [class*="option"], [class*="item"]'
-                            )).filter(el => el.innerText && el.innerText.trim().includes(email));
-                            if (opts.length === 0) return false;
-                            opts[0].dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}));
-                            opts[0].click();
-                            return true;
-                        }
-                    """, filter_email)
-                    if dom_clicked:
-                        page.wait_for_timeout(1_500)
-                        log.info(f"  '{filter_email}' selected via AOM container DOM click \u2713")
-                        return True
-                    log.info("  Tier 2: option not found in AOM container DOM. Proceeding to general hunt.")
-                except Exception as e2:
-                    log.info(f"  Tier 2 DOM click failed ({e2}). Proceeding to general hunt.")
+                # Power BI keeps [role="option"] elements in the DOM.
+                # Playwright's :has-text() reads textContent (not innerText) so it
+                # finds options even inside display:none containers.
+                log.info("  Tier 2: searching for AOM option directly in DOM...")
+                tier2_sels = [
+                    f'[role="option"]:has-text("{filter_email}")',
+                    f'[role="listitem"]:has-text("{filter_email}")',
+                    f'li:has-text("{filter_email}")',
+                ]
+                for t2_sel in tier2_sels:
+                    try:
+                        if page.locator(t2_sel).count() > 0:
+                            opt = page.locator(t2_sel).first
+                            try:
+                                opt.evaluate("el => el.click()")
+                                page.wait_for_timeout(400)
+                            except Exception:
+                                pass
+                            try:
+                                opt.click(force=True, timeout=2_000)
+                            except Exception:
+                                pass
+                            page.wait_for_timeout(1_500)
+                            log.info(f"  Tier 2: '{filter_email}' clicked via DOM \u2713")
+                            return True
+                    except Exception:
+                        continue
+                log.info("  Tier 2: option not found in DOM. Proceeding to general hunt.")
 
                 log.info("  Falling back to general hunt...")
             else:
