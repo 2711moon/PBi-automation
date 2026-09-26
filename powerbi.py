@@ -263,27 +263,16 @@ class PowerBIExporter:
 
     # -- Report URL Discovery --------------------------------------------------
 
-    def _discover_report_url(self, workspace: str, report_name: str,
-                             known_url: str = None) -> str:
+    def _discover_report_url(self, workspace: str, report_name: str) -> str:
         """
-        Find the workspace and report by name, then return the base report URL.
+        Navigate through the Power BI workspace to find the report and
+        return the base report URL.
 
-        If known_url is provided (from config), navigates directly to it,
-        skipping the workspace search but still waiting the full 8s for
-        Power BI to initialise all visuals (including the hidden AOM slicer).
+        Always uses workspace navigation so Power BI properly establishes
+        a session and loads all report visuals before returning.
         """
         page = self._page
 
-        if known_url:
-            log.info(f'  Report URL known. Navigating directly to initialise report...')
-            page.goto(known_url, timeout=NAV_TIMEOUT, wait_until="domcontentloaded")
-            page.wait_for_timeout(8_000)   # wait for all report visuals to initialise
-            self._handle_identity_prompt()
-            report_url = page.url.split("?")[0].rstrip("/")
-            log.info(f'  Report URL: {report_url}')
-            return report_url
-
-        # ── Workspace navigation path ─────────────────────────────────────────
         log.info(f'  Looking for workspace "{workspace}"...')
 
         ws_href = None
@@ -395,12 +384,11 @@ class PowerBIExporter:
         workspace     = report_cfg["workspace"]
         report_name   = report_cfg["name"]
         filter_column = report_cfg.get("filter_column", "AOM")
-        known_url     = report_cfg.get("url")
 
-        # Step 1: Discover report URL (cached after first call)
+        # Step 1: Discover report URL via workspace navigation (cached after first call)
         if (workspace, report_name) not in self._report_urls:
             self._report_urls[(workspace, report_name)] = self._discover_report_url(
-                workspace, report_name, known_url=known_url
+                workspace, report_name
             )
         report_url = self._report_urls[(workspace, report_name)]
 
