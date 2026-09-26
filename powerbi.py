@@ -324,6 +324,8 @@ class PowerBIExporter:
         log.info(f'  Navigating to workspace directly...')
         page.goto(ws_url, timeout=NAV_TIMEOUT, wait_until="domcontentloaded")
         page.wait_for_timeout(4_000)   # wait for workspace content list to render
+        self._handle_identity_prompt()  # dismiss verify-identity dialog if it appears
+        self._dismiss_popups()
 
         log.info(f'  Looking for report "{report_name}"...')
 
