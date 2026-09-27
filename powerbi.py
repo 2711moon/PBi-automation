@@ -559,42 +559,38 @@ class PowerBIExporter:
 
     def _try_slicer(self, filter_email: str) -> bool:
         """
-        Apply the AOM filter by interacting exclusively with the AOM-titled slicer.
+        Locate the AOM slicer by its title text 'AOM', clear any previous
+        selection via the eraser button, then open the dropdown and select
+        the target name.
 
-        Key insight: Power BI's slicer dropdown only opens when it receives the
-        full mouse event sequence (pointerdown→mousedown→pointerup→mouseup→click).
-        Using Playwright's page.mouse.click(x, y) sends this full sequence at real
-        screen coordinates.  force=True synthetic clicks send ONLY the click event,
-        which Power BI ignores → dropdown never opens.
-
-        Flow per attempt:
-          1. Hover over AOM slicer to reveal the eraser (hidden on hover).
-          2. Click eraser (first attempt only) → resets previous AOM selection.
-          3. Click at right side of dropdown (≈85% from left, where ▼ is).
-          4. Actively wait up to 8 s for [role="option"] to appear.
-          5. Find target, deselect-all, click target option.
-        Up to 3 attempts before giving up.  No generic 10-slicer hunt.
+        Click strategy: locator.click(force=True) generates CDP-level trusted
+        events. Combined with keyboard shortcuts (Enter/Space), this is the
+        most reliable way to open Power BI's Angular dropdown slicer.
+        Active wait (wait_for_selector, 10 s) instead of fixed sleep.
+        Up to 5 attempts. No generic slicer hunt.
         """
         page = self._page
 
-        # Force-unhide visuals
+        # Force-unhide visuals (including display:none)
         try:
-            page.evaluate("""() => {
+            page.evaluate("""
+            () => {
                 document.querySelectorAll(
-                    '.visual-container, .visualContainer, [class*="visual"]'
+                    '.visual-container, .visualContainer, [class*=\"visual\"]'
                 ).forEach(v => {
-                    v.style.setProperty('visibility', 'visible', 'important');
-                    v.style.setProperty('opacity',    '1',       'important');
-                    v.style.setProperty('pointer-events', 'auto','important');
+                    v.style.setProperty('visibility',     'visible', 'important');
+                    v.style.setProperty('opacity',        '1',       'important');
+                    v.style.setProperty('pointer-events', 'auto',    'important');
+                    if (getComputedStyle(v).display === 'none')
+                        v.style.setProperty('display', 'block', 'important');
                 });
             }""")
             page.wait_for_timeout(500)
         except Exception:
             pass
 
-        # JS: walk text nodes to find the element that says exactly "AOM",
-        # then climb up to find the nearest combobox/haspopup trigger.
-        FIND_TRIGGER_JS = """
+        # JS: find the AOM slicer trigger (prefer .slicerDropdownMenu)
+        FIND_TRIGGER_JS = r"""
         () => {
             const walker = document.createTreeWalker(
                 document.body, NodeFilter.SHOW_TEXT, null
@@ -605,10 +601,12 @@ class PowerBIExporter:
                 let el = node.parentElement;
                 for (let i = 0; i < 10; i++) {
                     if (!el || el === document.body) break;
-                    const t = el.querySelector(
+                    const menu = el.querySelector('.slicerDropdownMenu');
+                    if (menu) return menu;
+                    const combo = el.querySelector(
                         '[role="combobox"], [aria-haspopup="listbox"], [aria-haspopup="true"]'
                     );
-                    if (t) return t;
+                    if (combo) return combo;
                     el = el.parentElement;
                 }
             }
@@ -616,8 +614,8 @@ class PowerBIExporter:
         }
         """
 
-        # JS: find the eraser/clear button near the AOM text
-        FIND_ERASER_JS = """
+        # JS: find eraser/clear button near AOM text
+        FIND_ERASER_JS = r"""
         () => {
             const walker = document.createTreeWalker(
                 document.body, NodeFilter.SHOW_TEXT, null
@@ -631,8 +629,7 @@ class PowerBIExporter:
                     const e = el.querySelector(
                         '[aria-label*="clear" i], [aria-label*="Clear" i], '
                         + '[aria-label*="eraser" i], [title*="clear" i], '
-                        + '.slicerDeleteButton, [class*="clearButton"], '
-                        + '[class*="clear-button"]'
+                        + '.slicerDeleteButton, [class*="clearButton"]'
                     );
                     if (e) return e;
                     el = el.parentElement;
@@ -642,58 +639,54 @@ class PowerBIExporter:
         }
         """
 
-        def _mouse_click(elem_h, x_frac: float = 0.5) -> bool:
-            """Real mouse.click at a fractional X position of elem_h's bounding box."""
-            try:
-                elem_h.scroll_into_view_if_needed(timeout=3_000)
-            except Exception:
-                pass
-            bb = elem_h.bounding_box()
-            if bb:
-                x = bb['x'] + bb['width'] * x_frac
-                y = bb['y'] + bb['height'] * 0.5
-                page.mouse.move(x, y)
-                page.wait_for_timeout(150)
-                page.mouse.click(x, y)
-                return True
-            # Fallback: full JS event dispatch
-            try:
-                page.evaluate("""
-                (el) => {
-                    const r = el.getBoundingClientRect();
-                    const x = r.left + r.width  * 0.85;
-                    const y = r.top  + r.height * 0.5;
-                    const opts = {bubbles:true, cancelable:true, view:window,
-                                  clientX:x, clientY:y};
-                    ['pointerenter','mouseover','pointermove','mousemove',
-                     'pointerdown','mousedown','pointerup','mouseup','click'
-                    ].forEach(type => el.dispatchEvent(
-                        new MouseEvent(type, {...opts,
-                            button:0, buttons: type.includes('down') ? 1 : 0})
-                    ));
-                }
-                """, elem_h)
-                return True
-            except Exception:
-                pass
-            try:
-                elem_h.click(force=True, timeout=2_000)
-                return True
-            except Exception:
-                return False
-
-        email_sels = [
+        OPTION_SELS = '[role="option"], [role="listbox"] li, div[role="listbox"] span'
+        EMAIL_SELS  = [
             f'[role="option"]:has-text("{filter_email}")',
             f'[role="listbox"] li:has-text("{filter_email}")',
             f'div[role="listbox"] span:has-text("{filter_email}")',
         ]
 
-        for attempt in range(3):
-            log.info(f'  AOM slicer: attempt {attempt + 1}/3 for \'{filter_email}\'...')
-
-            # Find the AOM trigger
+        def _unhide_chain(elem_h):
             try:
-                h = page.evaluate_handle(FIND_TRIGGER_JS)
+                page.evaluate(r"""(node) => {
+                    let c = node;
+                    while (c && c !== document.body) {
+                        c.style.setProperty('visibility',     'visible', 'important');
+                        c.style.setProperty('opacity',        '1',       'important');
+                        c.style.setProperty('pointer-events', 'auto',    'important');
+                        if (getComputedStyle(c).display === 'none')
+                            c.style.setProperty('display', 'block', 'important');
+                        c = c.parentElement;
+                    }
+                }""", elem_h)
+            except Exception:
+                pass
+
+        def _open_dropdown(elem_h):
+            """Unhide chain, focus, keyboard, then force-click."""
+            _unhide_chain(elem_h)
+            page.wait_for_timeout(200)
+            try:
+                elem_h.focus()
+                page.wait_for_timeout(200)
+            except Exception:
+                pass
+            for key in ['Enter', 'Space', 'ArrowDown']:
+                try:
+                    page.keyboard.press(key)
+                    page.wait_for_timeout(250)
+                except Exception:
+                    pass
+            try:
+                elem_h.click(force=True, timeout=3_000)
+            except Exception:
+                pass
+
+        for attempt in range(5):
+            log.info(f'  AOM slicer: attempt {attempt + 1}/5 for \'{filter_email}\'...')
+
+            try:
+                h    = page.evaluate_handle(FIND_TRIGGER_JS)
                 elem = h.as_element()
             except Exception:
                 elem = None
@@ -702,87 +695,77 @@ class PowerBIExporter:
                 log.warning('  AOM slicer trigger not found in DOM.')
                 return False
 
-            # Attempt 1 only: hover to reveal eraser, then click it
+            # Attempt 1: hover to reveal eraser, then click it
             if attempt == 0:
                 try:
                     elem.hover(timeout=2_000)
                     page.wait_for_timeout(400)
-                    eh = page.evaluate_handle(FIND_ERASER_JS)
+                    eh     = page.evaluate_handle(FIND_ERASER_JS)
                     eraser = eh.as_element()
                     if eraser:
-                        _mouse_click(eraser, x_frac=0.5)
+                        _unhide_chain(eraser)
+                        eraser.click(force=True, timeout=2_000)
                         page.wait_for_timeout(800)
-                        log.info('  AOM slicer: eraser clicked (previous selection cleared).')
+                        log.info('  Eraser clicked — previous selection cleared.')
                 except Exception:
                     pass
 
-            # Click the dropdown trigger at right side (where ▼ is)
-            _mouse_click(elem, x_frac=0.85)
+            _open_dropdown(elem)
 
-            # Active-wait for options to appear (up to 8 s)
+            # Active-wait for options (up to 10 s)
             try:
-                page.wait_for_selector('[role="option"]', timeout=8_000, state='attached')
+                page.wait_for_selector(OPTION_SELS, timeout=10_000, state='attached')
                 options_found = True
             except Exception:
                 options_found = False
 
             if not options_found:
                 page.keyboard.press('Escape')
-                page.wait_for_timeout(1_500)
-                log.info(f'  AOM dropdown: no options appeared in 8 s (attempt {attempt + 1}).')
+                page.wait_for_timeout(1_000)
+                log.info(f'  No dropdown options in 10 s (attempt {attempt + 1}).')
                 continue
 
-            # Find the target name in options
-            found = any(page.locator(s).count() > 0 for s in email_sels)
-            if not found:
+            target_found = any(page.locator(s).count() > 0 for s in EMAIL_SELS)
+            if not target_found:
                 page.keyboard.press('Escape')
                 page.wait_for_timeout(500)
                 log.warning(
-                    f"  AOM dropdown opened but '{filter_email}' not listed. "
-                    "This name may not exist in the report data."
-                )
+                    f'  Dropdown opened but \'{filter_email}\' not listed. ')
                 return False
 
-            log.info(f"  AOM dropdown: '{filter_email}' present \u2714")
+            log.info(f'  AOM dropdown: \'{filter_email}\' found \u2714')
 
-            # Deselect "Select all" first
             for sel in ['[role="option"]:has-text("Select all")',
-                         '[role="option"]:has-text("(Select all)")']:
+                        '[role="option"]:has-text("(Select all)")']:
                 try:
-                    loc = page.locator(sel)
-                    if loc.count() > 0:
-                        _mouse_click(loc.first, x_frac=0.5)
+                    if page.locator(sel).count() > 0:
+                        page.locator(sel).first.click(force=True, timeout=2_000)
                         page.wait_for_timeout(600)
-                        log.info("  'Select all' deselected \u2713")
+                        log.info('  \'Select all\' deselected \u2713')
                         break
                 except Exception:
                     pass
 
-            # Click the target option
-            selected = False
-            for sel in email_sels:
+            for sel in EMAIL_SELS:
                 try:
-                    loc = page.locator(sel)
-                    if loc.count() > 0:
-                        _mouse_click(loc.first, x_frac=0.5)
+                    if page.locator(sel).count() > 0:
+                        opt = page.locator(sel).first
+                        opt.evaluate('el => el.click()')
+                        page.wait_for_timeout(400)
+                        opt.click(force=True, timeout=2_000)
                         page.wait_for_timeout(1_500)
-                        log.info(f"  Selected '{filter_email}' in AOM slicer \u2713")
+                        log.info(f'  Selected \'{filter_email}\' in AOM slicer \u2713')
                         page.keyboard.press('Escape')
                         page.wait_for_timeout(600)
-                        selected = True
-                        break
+                        return True
                 except Exception:
                     continue
-
-            if selected:
-                return True
 
             page.keyboard.press('Escape')
             return False
 
-        log.warning(f"  AOM slicer: all 3 attempts failed for '{filter_email}'.")
+        log.warning(f'  AOM slicer: all 5 attempts failed for \'{filter_email}\'.')
         return False
-
 
     def _apply_filter_via_pane(self, filter_email: str, filter_column: str) -> bool:
         """
