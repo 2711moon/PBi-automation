@@ -319,7 +319,7 @@ def main():
         p1_ok, p1_fail = run_phase(exporter, mailer, aoms, aoms, today, phase_num=1)
         print_phase_summary(1, p1_ok, p1_fail)
 
-        # ── Phase 2: retry Phase 1 failures (ask permission) ─────────────────
+        # ── Phase 2: retry Phase 1 failures (ask permission) ─────────────────────
         if p1_fail:
             print(f"\n  {len(p1_fail)} AOM(s) failed in Phase 1.")
             answer = input("  Run Phase 2 to retry them? [Y/n]: ").strip().lower()
@@ -328,22 +328,27 @@ def main():
                 log.info("\n" + "=" * 55)
                 log.info("  PHASE 2 — Retrying failed AOMs")
                 log.info("=" * 55)
+                log.info("  Re-logging in for a fresh session before Phase 2...")
+                exporter.relogin()
                 p2_ok, p2_fail = run_phase(exporter, mailer, retry_aoms, aoms, today, phase_num=2)
                 print_phase_summary(2, p2_ok, p2_fail)
 
-                # ── Phase 3: retry Phase 2 failures (automatic) ───────────────
+                # ── Phase 3: retry Phase 2 failures (automatic) ─────────────────
                 if p2_fail:
                     retry_aoms = [a for a in aoms if a["name"] in p2_fail]
                     log.info("\n" + "=" * 55)
                     log.info("  PHASE 3 — Final retry (automatic)")
                     log.info("=" * 55)
+                    log.info("  Re-logging in for a fresh session before Phase 3...")
+                    exporter.relogin()
                     p3_ok, p3_fail = run_phase(exporter, mailer, retry_aoms, aoms, today, phase_num=3)
                     print_phase_summary(3, p3_ok, p3_fail)
                 else:
-                    log.info("  Phase 2 achieved 100% success — Phase 3 not needed.")
+                    log.info("  Phase 2 achieved 100%% success — Phase 3 not needed.")
             else:
                 log.info("  Phase 2 skipped by user.")
         else:
+            log.info("  Phase 1 achieved 100%% success — Phase 2 and Phase 3 not needed.")
             log.info("  Phase 1 achieved 100% success — Phase 2 and Phase 3 not needed.")
 
     # ── Cleanup + final summary ───────────────────────────────────────────────

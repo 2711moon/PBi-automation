@@ -39,7 +39,8 @@ class PowerBIExporter:
         self._context     = None
         self._page        = None
         self._report_urls  = {}   # cache: (workspace, report_name) -> url
-        self._slicer_cache = {}   # cache: report_name -> slicer index that contains AOM names
+        self._slicer_cache    = {}   # cache: report_name -> slicer index that contains AOM names
+        self._aom_trigger_idx = None  # cached index of the AOM slicer in the trigger list
 
     # -- Context manager -------------------------------------------------------
 
@@ -263,6 +264,28 @@ class PowerBIExporter:
 
     # -- Report URL Discovery --------------------------------------------------
 
+
+    def relogin(self) -> None:
+        """
+        Log out of the current Power BI session and log back in.
+        Used by Phase 2 / 3 to get a fresh session and clear any stale state.
+        """
+        log.info("  Re-logging in for fresh session...")
+        # Clear cached URLs so workspace navigation runs again
+        self._report_urls.clear()
+        self._aom_trigger_idx = None
+        page = self._page
+        # Navigate to Microsoft logout
+        try:
+            page.goto("https://login.microsoftonline.com/logout.srf",
+                      timeout=15_000, wait_until="domcontentloaded")
+            page.wait_for_timeout(2_000)
+        except Exception:
+            pass
+        # Re-run the login flow
+        self._login()
+        log.info("  Re-login complete.")
+
     def _discover_report_url(self, workspace: str, report_name: str,
                              known_url: str = None) -> str:
         """
@@ -427,13 +450,22 @@ class PowerBIExporter:
         # Step 4: Set filter via UI
         log.info(f"  Setting filter: {filter_column} = {filter_email}")
         if not self._apply_filter_via_pane(filter_email, filter_column):
-            log.error(
-                f"  FILTER APPLY FAILED \u2014 {aom_name}:\n"
-                f"  Could not set '{filter_column}' = '{filter_email}' in UI.\n"
-                f"  This report will NOT be attached."
-            )
-            self._debug_screenshot(page, f"{aom_name}_{report_name}")
-            return None
+            # ── Inline retry: reload page and try once more ───────────────
+            log.warning(f"  Filter failed on first attempt. Reloading and retrying...")
+            page.wait_for_timeout(3_000)
+            page.goto(report_url, timeout=NAV_TIMEOUT, wait_until="domcontentloaded")
+            page.wait_for_timeout(5_000)
+            self._handle_identity_prompt()
+            self._open_filters_pane()
+            page.wait_for_timeout(1_500)
+            if not self._apply_filter_via_pane(filter_email, filter_column):
+                log.error(
+                    f"  FILTER APPLY FAILED \u2014 {aom_name}:\n"
+                    f"  Could not set '{filter_column}' = '{filter_email}' in UI.\n"
+                    f"  This report will NOT be attached."
+                )
+                self._debug_screenshot(page, f"{aom_name}_{report_name}")
+                return None
 
         # Step 5: Smart wait – poll until other AOM emails are gone from the page
         MAX_WAIT_SEC  = 90
@@ -527,17 +559,18 @@ class PowerBIExporter:
 
     def _try_slicer(self, filter_email: str) -> bool:
         """
-        Apply the AOM filter by hunting through slicer triggers on the page.
+        Apply the AOM filter via the slicer visual.
 
-        For each slicer trigger found:
-          1. Force-unhide parent chain via JS
-          2. Open dropdown (keyboard shortcuts + force click)
-          3. Check page-wide for [role="option"] elements
-          4. If the target name is present, select it and return True
+        Strategy:
+          1. JS-based targeted search: find the visual whose title text is
+             exactly "AOM" and click its dropdown trigger directly.
+          2. If that fails, fall back to the generic hunt through all slicer
+             triggers (using self._aom_trigger_idx cache first).
+          3. Each click attempt is retried once on failure (3-second gap).
         """
         page = self._page
 
-        # 1. Force-unhide all visuals via JS
+        # ── Force-unhide all visuals ──────────────────────────────────────────
         try:
             page.evaluate("""() => {
                 const visuals = document.querySelectorAll(
@@ -556,35 +589,12 @@ class PowerBIExporter:
         except Exception as e:
             log.warning(f"  JS unhide failed (ignoring): {e}")
 
-        # 2. Find all potential slicer triggers
-        SLICER_TRIGGERS = [
-            '.visual [role="combobox"]',
-            '.visual [aria-haspopup="listbox"]',
-            '.visual [aria-haspopup="true"]',
-            '.slicerDropdownMenu',
-        ]
+        option_sels = '[role="option"], [role="listbox"] li, div[role="listbox"] span'
 
-        potential_triggers = []
-        for sel in SLICER_TRIGGERS:
+        def _do_select(trigger_el) -> bool:
+            """Open trigger_el, check options, deselect-all, select target. Returns True on success."""
+            # Unhide parent chain
             try:
-                page.locator(sel).first.wait_for(state="attached", timeout=2_000)
-                elements = page.locator(sel).all()
-                potential_triggers.extend(elements)
-            except Exception:
-                pass
-
-        if not potential_triggers:
-            log.warning("  No slicer triggers found in DOM.")
-            return False
-
-        log.info(f"  Found {len(potential_triggers)} potential slicer(s). Hunting for '{filter_email}'...")
-
-        target_slicer = None
-
-        # 3. Hunt for the correct slicer
-        for idx, el in enumerate(potential_triggers):
-            try:
-                # Bring element to front (unhide parent chain)
                 page.evaluate("""(node) => {
                     let curr = node;
                     while (curr && curr !== document.body) {
@@ -594,118 +604,177 @@ class PowerBIExporter:
                         curr.style.setProperty('pointer-events', 'auto', 'important');
                         curr = curr.parentElement;
                     }
-                }""", el)
+                }""", trigger_el)
+                page.wait_for_timeout(200)
+            except Exception:
+                pass
+
+            # Open dropdown
+            try:
+                trigger_el.focus()
+                page.wait_for_timeout(200)
+                page.keyboard.press("Alt+ArrowDown")
                 page.wait_for_timeout(300)
+                page.keyboard.press("Enter")
+                page.wait_for_timeout(300)
+                page.keyboard.press("Space")
+            except Exception:
+                pass
+            try:
+                trigger_el.click(force=True, timeout=2_000)
+            except Exception:
+                pass
+            page.wait_for_timeout(2_000)
 
-                # Open dropdown — keyboard shortcuts first, then mouse click
+            if page.locator(option_sels).count() == 0:
+                page.keyboard.press("Escape")
+                page.wait_for_timeout(400)
+                return False
+
+            # Check target name is among the options
+            email_sels = [
+                f'[role="option"]:has-text("{filter_email}")',
+                f'[role="listbox"] li:has-text("{filter_email}")',
+                f'div[role="listbox"] span:has-text("{filter_email}")',
+            ]
+            found = any(page.locator(s).count() > 0 for s in email_sels)
+            if not found:
+                page.keyboard.press("Escape")
+                page.wait_for_timeout(400)
+                return False
+
+            log.info(f"  Slicer contains '{filter_email}' \u2714  Selecting...")
+
+            # Deselect "Select all" first
+            for sel in ['[role="option"]:has-text("Select all")',
+                        '[role="option"]:has-text("(Select all)")']:
                 try:
-                    el.focus()
-                    page.wait_for_timeout(200)
-                    page.keyboard.press("Alt+ArrowDown")
-                    page.wait_for_timeout(300)
-                    page.keyboard.press("Enter")
-                    page.wait_for_timeout(300)
-                    page.keyboard.press("Space")
-                except Exception as e:
-                    log.warning(f"  Keyboard focus failed: {e}")
+                    if page.locator(sel).count() > 0:
+                        page.locator(sel).first.click(force=True, timeout=2_000)
+                        page.wait_for_timeout(700)
+                        log.info("  'Select all' deselected \u2713")
+                        break
+                except Exception:
+                    pass
 
-                el.click(force=True, timeout=2_000)
-                page.wait_for_timeout(2_000)
-
-                # Check if any options rendered page-wide
-                option_sels = '[role="option"], [role="listbox"] li, div[role="listbox"] span'
-                if page.locator(option_sels).count() == 0:
-                    page.keyboard.press("Escape")
-                    page.wait_for_timeout(500)
+            # Select the target
+            for sel in email_sels:
+                try:
+                    if page.locator(sel).count() > 0:
+                        opt = page.locator(sel).first
+                        try:
+                            opt.evaluate("el => el.click()")
+                            page.wait_for_timeout(400)
+                        except Exception:
+                            pass
+                        try:
+                            opt.click(force=True, timeout=2_000)
+                        except Exception:
+                            pass
+                        page.wait_for_timeout(1_500)
+                        log.info(f"  Selected '{filter_email}' in slicer \u2713")
+                        # Close dropdown
+                        page.keyboard.press("Escape")
+                        page.wait_for_timeout(600)
+                        try:
+                            if page.locator(option_sels).first.is_visible(timeout=500):
+                                trigger_el.click(force=True, timeout=1_000)
+                                page.wait_for_timeout(400)
+                        except Exception:
+                            pass
+                        return True
+                except Exception:
                     continue
 
-                # Look for our specific name
-                email_sels = [
-                    f'[role="option"]:has-text("{filter_email}")',
-                    f'[role="listbox"] li:has-text("{filter_email}")',
-                    f'div[role="listbox"] span:has-text("{filter_email}")'
-                ]
-
-                found_email = False
-                for sel in email_sels:
-                    if page.locator(sel).count() > 0:
-                        found_email = True
-                        break
-
-                if found_email:
-                    log.info(f"  Found the correct slicer containing '{filter_email}'.")
-                    target_slicer = el
-                    break
-                else:
-                    page.keyboard.press("Escape")
-                    page.wait_for_timeout(500)
-            except Exception:
-                continue
-
-        if not target_slicer:
-            log.warning("  None of the slicers contained the target name.")
-            return False
-
-        # 4. Right slicer is open. Apply the filter.
-        # Deselect "Select all" first
-        for sel in [
-            '[role="option"]:has-text("Select all")',
-            '[role="option"]:has-text("(Select all)")'
-        ]:
-            try:
-                if page.locator(sel).count() > 0:
-                    page.locator(sel).first.click(force=True, timeout=2_000)
-                    page.wait_for_timeout(800)
-                    log.info("  'Select all' deselected \u2713")
-                    break
-            except Exception:
-                continue
-
-        # Select the specific AOM name
-        email_sels = [
-            f'[role="option"]:has-text("{filter_email}")',
-            f'[role="listbox"] li:has-text("{filter_email}")',
-            f'div[role="listbox"] span:has-text("{filter_email}")'
-        ]
-
-        email_clicked = False
-        for sel in email_sels:
-            try:
-                if page.locator(sel).count() > 0:
-                    email_opt = page.locator(sel).first
-                    try:
-                        email_opt.evaluate("el => el.click()")
-                        page.wait_for_timeout(500)
-                    except Exception:
-                        pass
-                    try:
-                        email_opt.click(force=True, timeout=2_000)
-                    except Exception:
-                        pass
-                    page.wait_for_timeout(1_500)
-                    log.info(f"  Selected '{filter_email}' in slicer \u2713")
-                    email_clicked = True
-                    break
-            except Exception:
-                continue
-
-        if not email_clicked:
-            log.warning(f"  Failed to click email option.")
             page.keyboard.press("Escape")
             return False
 
-        # Close the dropdown
-        page.keyboard.press("Escape")
-        page.wait_for_timeout(800)
-        try:
-            option_sels = '[role="option"], [role="listbox"] li, div[role="listbox"] span'
-            if page.locator(option_sels).first.is_visible(timeout=600):
-                log.info("  Dropdown still open \u2014 clicking trigger to close...")
-                target_slicer.click(force=True, timeout=1_000)
-                page.wait_for_timeout(600)
-        except Exception:
-            pass
-        return True
+        # ── STEP 1: Targeted search — find visual titled "AOM" via JS ─────────
+        log.info('  Targeted: looking for slicer with title "AOM"...')
+        for attempt in range(2):  # retry once if click fails to open options
+            try:
+                handle = page.evaluate_handle("""
+                () => {
+                    // Walk all leaf text nodes; find exact "AOM" match
+                    const walker = document.createTreeWalker(
+                        document.body, NodeFilter.SHOW_TEXT, null
+                    );
+                    let node;
+                    while ((node = walker.nextNode())) {
+                        if (node.textContent.trim() !== 'AOM') continue;
+                        // Walk up to find nearest visual container with a dropdown
+                        let el = node.parentElement;
+                        for (let i = 0; i < 10; i++) {
+                            if (!el || el === document.body) break;
+                            const trigger = el.querySelector(
+                                '[role="combobox"], [aria-haspopup="listbox"], [aria-haspopup="true"]'
+                            );
+                            if (trigger) return trigger;
+                            el = el.parentElement;
+                        }
+                    }
+                    return null;
+                }
+                """)
+                elem = handle.as_element()
+                if elem is None:
+                    log.info('  Targeted: AOM slicer not found in DOM by title.')
+                    break
+
+                log.info(f'  Targeted: AOM slicer found (attempt {attempt+1}).')
+                if _do_select(elem):
+                    return True
+                if attempt == 0:
+                    log.info('  AOM slicer clicked but no options. Waiting 3s then retrying...')
+                    page.wait_for_timeout(3_000)
+            except Exception as ex:
+                log.warning(f'  Targeted AOM search failed (attempt {attempt+1}): {ex}')
+                break
+
+        # ── STEP 2: Generic hunt with cached index tried first ─────────────────
+        SLICER_TRIGGERS = [
+            '.visual [role="combobox"]',
+            '.visual [aria-haspopup="listbox"]',
+            '.visual [aria-haspopup="true"]',
+            '.slicerDropdownMenu',
+        ]
+        potential_triggers = []
+        for sel in SLICER_TRIGGERS:
+            try:
+                page.locator(sel).first.wait_for(state="attached", timeout=2_000)
+                potential_triggers.extend(page.locator(sel).all())
+            except Exception:
+                pass
+
+        if not potential_triggers:
+            log.warning("  No slicer triggers found in DOM.")
+            return False
+
+        log.info(f"  Generic hunt: {len(potential_triggers)} trigger(s). "
+                 f"Hunting for '{filter_email}'...")
+
+        # Build iteration order: cached index first, then the rest
+        indices = list(range(len(potential_triggers)))
+        if self._aom_trigger_idx is not None and self._aom_trigger_idx < len(potential_triggers):
+            idx = self._aom_trigger_idx
+            indices = [idx] + [i for i in indices if i != idx]
+
+        for idx in indices:
+            el = potential_triggers[idx]
+            for attempt in range(2):
+                try:
+                    if _do_select(el):
+                        log.info(f"  Slicer found at index {idx}. Caching.")
+                        self._aom_trigger_idx = idx
+                        return True
+                    if attempt == 0:
+                        page.wait_for_timeout(2_000)  # wait before retry
+                except Exception:
+                    break
+
+        log.warning("  None of the slicers contained the target name.")
+        return False
+
 
     def _apply_filter_via_pane(self, filter_email: str, filter_column: str) -> bool:
         """
