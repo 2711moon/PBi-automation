@@ -35,7 +35,7 @@ REPORTS = [
 SMTP_HOST         = "smtp.zoho.in"
 SMTP_PORT         = 587
 SMTP_USER         = "pragati.panhale@kisna.com"
-SMTP_APP_PASSWORD = "JxQDD6QrPiMp"   # Zoho App Password
+SMTP_APP_PASSWORD = "JxQDD6QrPiMp"   # Zoho App Password Key
 
 # == Email Templates ===========================================================
 EMAIL_SUBJECT = "Franchise Report -- {aom_name} -- {date}"
