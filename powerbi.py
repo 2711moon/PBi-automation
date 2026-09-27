@@ -557,6 +557,80 @@ class PowerBIExporter:
         return False
 
 
+    def _reset_non_aom_slicers(self) -> None:
+        """
+        CRITICAL: The report is saved with 'Operation Support = Anuradha Mishra'
+        which cross-filters the AOM dropdown to show only ~3 names.
+        Reset every slicer EXCEPT AOM to 'All' so all 41 AOMs appear.
+
+        Strategy: hover over each .slicerDropdownMenu that is NOT the AOM slicer,
+        wait for the eraser icon to appear, then click it.
+        """
+        page = self._page
+        log.info("  Resetting non-AOM slicers (clearing cross-filters)...")
+
+        try:
+            # Find all slicer dropdown triggers on the page
+            all_menus = page.locator('.slicerDropdownMenu, [role="combobox"]').all()
+        except Exception:
+            return
+
+        for menu in all_menus:
+            try:
+                # Skip if this is the AOM slicer
+                is_aom = page.evaluate("""
+                (el) => {
+                    let p = el.parentElement;
+                    for (let i = 0; i < 12; i++) {
+                        if (!p || p === document.body) break;
+                        const walker = document.createTreeWalker(
+                            p, NodeFilter.SHOW_TEXT, null);
+                        let n;
+                        while ((n = walker.nextNode())) {
+                            if (n.textContent.trim() === 'AOM') return true;
+                        }
+                        p = p.parentElement;
+                    }
+                    return false;
+                }
+                """, menu)
+                if is_aom:
+                    continue
+
+                # Hover to reveal the eraser button
+                try:
+                    menu.hover(timeout=1_500)
+                    page.wait_for_timeout(300)
+                except Exception:
+                    pass
+
+                # Find and click the eraser near this trigger
+                eraser_h = page.evaluate_handle("""
+                (el) => {
+                    let p = el.parentElement;
+                    for (let i = 0; i < 8; i++) {
+                        if (!p || p === document.body) break;
+                        const e = p.querySelector(
+                            '[aria-label*="clear" i], [aria-label*="Clear" i],'
+                            + '[aria-label*="eraser" i], [title*="clear" i],'
+                            + '.slicerDeleteButton, [class*="clearButton"]'
+                        );
+                        if (e) return e;
+                        p = p.parentElement;
+                    }
+                    return null;
+                }
+                """, menu)
+                eraser = eraser_h.as_element()
+                if eraser:
+                    eraser.click(force=True, timeout=1_500)
+                    page.wait_for_timeout(300)
+                    log.info("  Non-AOM slicer cleared.")
+            except Exception:
+                continue
+
+        page.wait_for_timeout(1_500)  # Let report re-render after clearing
+
     def _try_slicer(self, filter_email: str) -> bool:
         """
         Locate the AOM slicer by its title text 'AOM', clear any previous
@@ -725,41 +799,54 @@ class PowerBIExporter:
                 log.info(f'  No dropdown options in 10 s (attempt {attempt + 1}).')
                 continue
 
+            # Dismiss identity dialog + overlay BEFORE each attempt
+            self._handle_identity_prompt()
+            self._dismiss_popups()
+
             target_found = any(page.locator(s).count() > 0 for s in EMAIL_SELS)
             if not target_found:
+                try:
+                    visible = page.locator('[role="option"]').all_text_contents()
+                    log.warning(
+                        f'  Dropdown opened but \'{filter_email}\' not listed.\n'
+                        f'  Visible options ({len(visible)}): {visible[:8]}')
+                except Exception:
+                    log.warning(f'  Dropdown opened but \'{filter_email}\' not listed.')
                 page.keyboard.press('Escape')
                 page.wait_for_timeout(500)
-                log.warning(
-                    f'  Dropdown opened but \'{filter_email}\' not listed. ')
                 return False
 
             log.info(f'  AOM dropdown: \'{filter_email}\' found \u2714')
 
-            for sel in ['[role="option"]:has-text("Select all")',
-                        '[role="option"]:has-text("(Select all)")']:
-                try:
-                    if page.locator(sel).count() > 0:
-                        page.locator(sel).first.click(force=True, timeout=2_000)
-                        page.wait_for_timeout(600)
-                        log.info('  \'Select all\' deselected \u2713')
-                        break
-                except Exception:
-                    pass
-
+            # Click the target option DIRECTLY.
+            # Do NOT click 'Select all' first: when the slicer is in 'All/nothing-
+            # selected' state (after eraser), clicking 'Select all' would ACTIVATE
+            # all items and break the subsequent individual selection.
+            selected = False
             for sel in EMAIL_SELS:
                 try:
-                    if page.locator(sel).count() > 0:
-                        opt = page.locator(sel).first
-                        opt.evaluate('el => el.click()')
-                        page.wait_for_timeout(400)
-                        opt.click(force=True, timeout=2_000)
+                    loc = page.locator(sel)
+                    if loc.count() > 0:
+                        opt = loc.first
+                        # Dismiss any overlay that appeared between find and click
+                        self._handle_identity_prompt()
+                        opt.evaluate('el => el.click()')   # JS click (bypasses overlay)
+                        page.wait_for_timeout(500)
+                        try:
+                            opt.click(force=True, timeout=2_000)  # CDP backup
+                        except Exception:
+                            pass
                         page.wait_for_timeout(1_500)
                         log.info(f'  Selected \'{filter_email}\' in AOM slicer \u2713')
                         page.keyboard.press('Escape')
                         page.wait_for_timeout(600)
-                        return True
+                        selected = True
+                        break
                 except Exception:
                     continue
+
+            if selected:
+                return True
 
             page.keyboard.press('Escape')
             return False
@@ -774,6 +861,11 @@ class PowerBIExporter:
         Falls back to the Filters pane card if the slicer attempt fails.
         """
         page = self._page
+
+        # Step 0: Clear ALL non-AOM slicers so AOM dropdown shows all 41 names.
+        # The report is saved with 'Operation Support = Anuradha Mishra' which
+        # cross-filters the AOM dropdown to only ~3 names. We reset everything first.
+        self._reset_non_aom_slicers()
 
         # Primary: AOM slicer
         log.info("  Step A: Opening AOM slicer dropdown...")
