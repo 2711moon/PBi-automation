@@ -47,7 +47,7 @@ class PowerBIExporter:
     def __enter__(self) -> "PowerBIExporter":
         self._pw = sync_playwright().start()
         self._browser = self._pw.chromium.launch(
-            headless=True,
+            headless=False,
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--disable-gpu",
