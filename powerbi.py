@@ -563,73 +563,207 @@ class PowerBIExporter:
         which cross-filters the AOM dropdown to show only ~3 names.
         Reset every slicer EXCEPT AOM to 'All' so all 41 AOMs appear.
 
-        Strategy: hover over each .slicerDropdownMenu that is NOT the AOM slicer,
-        wait for the eraser icon to appear, then click it.
+        Uses JavaScript to:
+        1. Force-reveal and JS-click all eraser buttons (fast, works off-screen)
+        2. Falls back to Playwright hover+click if JS found nothing
         """
         page = self._page
         log.info("  Resetting non-AOM slicers (clearing cross-filters)...")
 
-        try:
-            # Find all slicer dropdown triggers on the page
-            all_menus = page.locator('.slicerDropdownMenu, [role="combobox"]').all()
-        except Exception:
-            return
+        # --- Primary: pure JavaScript approach ---
+        # Walk the DOM to find the AOM visual container, then click every OTHER
+        # slicer's eraser button using JS (works even when off-screen).
+        n_cleared = page.evaluate(r"""
+        () => {
+            let count = 0;
 
-        for menu in all_menus:
-            try:
-                # Skip if this is the AOM slicer
-                is_aom = page.evaluate("""
-                (el) => {
-                    let p = el.parentElement;
-                    for (let i = 0; i < 12; i++) {
+            // ── Step 1: identify the AOM slicer's direct visual container ──
+            // Look for a container whose DIRECT slicer-header text is "AOM"
+            // (max 6 levels up from the dropdown trigger, not the full page).
+            function findAomContainer() {
+                const menus = document.querySelectorAll(
+                    '.slicerDropdownMenu, [aria-haspopup="listbox"], [role="combobox"]'
+                );
+                for (const menu of menus) {
+                    let p = menu.parentElement;
+                    for (let i = 0; i < 6; i++) {
                         if (!p || p === document.body) break;
-                        const walker = document.createTreeWalker(
-                            p, NodeFilter.SHOW_TEXT, null);
-                        let n;
-                        while ((n = walker.nextNode())) {
-                            if (n.textContent.trim() === 'AOM') return true;
+                        // Check header-label elements at THIS level only
+                        // (:scope selects only direct children of p)
+                        const hdrs = p.querySelectorAll(
+                            '[class*="slicerHeader"], [class*="headerLabel"], '
+                            + '[class*="labelText"], .title, .slicerTitle'
+                        );
+                        for (const h of hdrs) {
+                            // textContent.trim() must be EXACTLY 'AOM', not contain it
+                            if (h.textContent.trim() === 'AOM') return p;
                         }
                         p = p.parentElement;
                     }
-                    return false;
                 }
-                """, menu)
-                if is_aom:
-                    continue
+                return null;
+            }
 
-                # Hover to reveal the eraser button
-                try:
-                    menu.hover(timeout=1_500)
-                    page.wait_for_timeout(300)
-                except Exception:
-                    pass
+            const aomContainer = findAomContainer();
 
-                # Find and click the eraser near this trigger
-                eraser_h = page.evaluate_handle("""
-                (el) => {
-                    let p = el.parentElement;
-                    for (let i = 0; i < 8; i++) {
-                        if (!p || p === document.body) break;
-                        const e = p.querySelector(
-                            '[aria-label*="clear" i], [aria-label*="Clear" i],'
-                            + '[aria-label*="eraser" i], [title*="clear" i],'
-                            + '.slicerDeleteButton, [class*="clearButton"]'
+            // ── Step 2: collect ALL slicer dropdown triggers ──
+            const allMenus = document.querySelectorAll(
+                '.slicerDropdownMenu, [aria-haspopup="listbox"], [role="combobox"]'
+            );
+
+            allMenus.forEach(menu => {
+                // Skip if inside the AOM container
+                if (aomContainer && aomContainer.contains(menu)) return;
+
+                // Scroll into view so hover events work
+                menu.scrollIntoView({ block: 'center', inline: 'center' });
+
+                // Dispatch hover events to cause eraser to appear in DOM
+                ['mouseenter', 'mouseover', 'pointermove', 'pointerenter'].forEach(type => {
+                    try {
+                        menu.dispatchEvent(
+                            new MouseEvent(type, { bubbles: true, cancelable: true, view: window })
                         );
-                        if (e) return e;
-                        p = p.parentElement;
-                    }
-                    return null;
-                }
-                """, menu)
-                eraser = eraser_h.as_element()
-                if eraser:
-                    eraser.click(force=True, timeout=1_500)
-                    page.wait_for_timeout(300)
-                    log.info("  Non-AOM slicer cleared.")
-            except Exception:
-                continue
+                    } catch(ex) {}
+                });
 
-        page.wait_for_timeout(1_500)  # Let report re-render after clearing
+                // Walk up to find the eraser button
+                let p = menu.parentElement;
+                let found = false;
+                for (let i = 0; i < 10 && !found; i++) {
+                    if (!p || p === document.body) break;
+
+                    // Also dispatch hover on parent to trigger CSS :hover
+                    try {
+                        p.dispatchEvent(
+                            new MouseEvent('mouseover', { bubbles: true, view: window })
+                        );
+                    } catch(ex) {}
+
+                    const ERASER_SELS = [
+                        '.slicerDeleteButton',
+                        '[class*="clearButton"]',
+                        '[class*="eraserButton"]',
+                        '[class*="slicerDelete"]',
+                        '[aria-label*="clear" i]',
+                        '[aria-label*="eraser" i]',
+                        '[title*="clear" i]',
+                        '[title*="Remove filter" i]',
+                        '[title*="Remove" i]',
+                    ];
+
+                    for (const sel of ERASER_SELS) {
+                        const eraser = p.querySelector(sel);
+                        if (eraser) {
+                            // Force visible
+                            eraser.style.cssText +=
+                                ';display:block!important'
+                                + ';visibility:visible!important'
+                                + ';opacity:1!important'
+                                + ';pointer-events:auto!important';
+                            eraser.click();
+                            count++;
+                            found = true;
+                            break;
+                        }
+                    }
+                    p = p.parentElement;
+                }
+            });
+
+            return count;
+        }
+        """)
+
+        log.info(f"  JavaScript cleared {n_cleared} non-AOM slicer(s).")
+
+        # --- Fallback: Playwright hover approach (for elements JS couldn't clear) ---
+        if n_cleared == 0:
+            log.warning(
+                "  JS cleared 0 slicers — falling back to Playwright hover approach.")
+            try:
+                all_menus = page.locator(
+                    '.slicerDropdownMenu, [aria-haspopup="listbox"], [role="combobox"]'
+                ).all()
+                log.info(f"  Playwright found {len(all_menus)} slicer triggers.")
+                for i, menu in enumerate(all_menus):
+                    try:
+                        # is_aom: only look 5 levels up and check specific header classes
+                        is_aom = page.evaluate("""
+                        (el) => {
+                            let p = el.parentElement;
+                            for (let i = 0; i < 5; i++) {
+                                if (!p || p === document.body) break;
+                                const hdrs = p.querySelectorAll(
+                                    '[class*="slicerHeader"], [class*="headerLabel"], '
+                                    + '[class*="labelText"], .title, .slicerTitle'
+                                );
+                                for (const h of hdrs) {
+                                    if (h.textContent.trim() === 'AOM') return true;
+                                }
+                                p = p.parentElement;
+                            }
+                            return false;
+                        }
+                        """, menu)
+                        if is_aom:
+                            log.info(f"  Slicer {i}: AOM — skipping.")
+                            continue
+
+                        # Scroll into view
+                        page.evaluate(
+                            "(el) => el.scrollIntoView({block:'center',inline:'center'})",
+                            menu)
+                        page.wait_for_timeout(300)
+
+                        # Hover
+                        try:
+                            menu.hover(timeout=2_000)
+                            page.wait_for_timeout(400)
+                        except Exception:
+                            pass
+
+                        # Find eraser
+                        eraser_h = page.evaluate_handle("""
+                        (el) => {
+                            let p = el.parentElement;
+                            for (let i = 0; i < 8; i++) {
+                                if (!p || p === document.body) break;
+                                const e = p.querySelector(
+                                    '.slicerDeleteButton, [class*="clearButton"], '
+                                    + '[aria-label*="clear" i], [title*="clear" i]'
+                                );
+                                if (e) {
+                                    e.style.cssText += ';display:block!important'
+                                        + ';visibility:visible!important'
+                                        + ';opacity:1!important'
+                                        + ';pointer-events:auto!important';
+                                    return e;
+                                }
+                                p = p.parentElement;
+                            }
+                            return null;
+                        }
+                        """, menu)
+                        eraser = eraser_h.as_element()
+                        if eraser:
+                            eraser.click(force=True, timeout=1_500)
+                            page.wait_for_timeout(300)
+                            log.info(f"  Slicer {i}: cleared via hover.")
+                        else:
+                            val = ''
+                            try:
+                                val = menu.text_content()[:30]
+                            except Exception:
+                                pass
+                            log.info(f"  Slicer {i}: no eraser found (val='{val}').")
+                    except Exception as ex:
+                        log.info(f"  Slicer {i}: {type(ex).__name__}")
+                        continue
+            except Exception as ex:
+                log.warning(f"  Fallback hover approach failed: {ex}")
+
+        page.wait_for_timeout(2_000)  # Let report re-render after clearing
 
     def _try_slicer(self, filter_email: str) -> bool:
         """
