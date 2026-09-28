@@ -143,20 +143,22 @@ class PowerBIExporter:
         # Sometimes Power BI asks to re-enter email: "Enter your work or school email..."
         try:
             interstitial_email = page.locator('input[placeholder="Enter email"], input[type="email"]').first
-            if interstitial_email.is_visible(timeout=3_000):
+            if interstitial_email.is_visible(timeout=15_000):
                 log.info("  Power BI interstitial detected. Re-submitting email...")
                 interstitial_email.fill(self.username)
                 
                 # Try clicking Submit button if it exists
                 submit_btn = page.locator('button:has-text("Submit")').first
                 if submit_btn.is_visible(timeout=1_000):
-                    submit_btn.click()
+                    submit_btn.click(force=True)
                 else:
                     page.keyboard.press("Enter")
                     
-                page.wait_for_timeout(5_000)
-        except Exception:
-            pass
+                # Wait for the interstitial to disappear
+                interstitial_email.wait_for(state="hidden", timeout=15_000)
+                page.wait_for_timeout(2_000)
+        except Exception as e:
+            log.debug(f"  Interstitial handling note: {e}")
 
         if "app.powerbi.com" not in page.url:
             os.makedirs(EXPORTS_DIR, exist_ok=True)
@@ -298,6 +300,10 @@ class PowerBIExporter:
         page = self._page
 
         log.info(f'  Looking for workspace "{workspace}"...')
+        
+        # Clear any identity prompts or welcome dialogs before looking
+        self._handle_identity_prompt()
+        self._dismiss_popups()
 
         ws_href = None
         ws_selectors = [
