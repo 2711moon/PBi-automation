@@ -907,11 +907,98 @@ class PowerBIExporter:
         """
         page = self._page
         
+        # JS: find the AOM slicer trigger (prefer .slicerDropdownMenu)
+        FIND_TRIGGER_JS = r"""
+        () => {
+            const walker = document.createTreeWalker(
+                document.body, NodeFilter.SHOW_TEXT, null
+            );
+            let node;
+            while ((node = walker.nextNode())) {
+                if (node.textContent.trim() !== 'AOM') continue;
+                let el = node.parentElement;
+                for (let i = 0; i < 10; i++) {
+                    if (!el || el === document.body) break;
+                    const menu = el.querySelector('.slicerDropdownMenu');
+                    if (menu) return menu;
+                    const combo = el.querySelector(
+                        '[role="combobox"], [aria-haspopup="listbox"], [aria-haspopup="true"]'
+                    );
+                    if (combo) return combo;
+                    el = el.parentElement;
+                }
+            }
+            return null;
+        }
+        """
+
+        # JS: find eraser/clear button near AOM text
+        FIND_ERASER_JS = r"""
+        () => {
+            const walker = document.createTreeWalker(
+                document.body, NodeFilter.SHOW_TEXT, null
+            );
+            let node;
+            while ((node = walker.nextNode())) {
+                if (node.textContent.trim() !== 'AOM') continue;
+                let el = node.parentElement;
+                for (let i = 0; i < 8; i++) {
+                    if (!el || el === document.body) break;
+                    const e = el.querySelector(
+                        '[aria-label*="clear" i], [aria-label*="Clear" i], '
+                        + '[aria-label*="eraser" i], [title*="clear" i], '
+                        + '.slicerDeleteButton, [class*="clearButton"]'
+                    );
+                    if (e) return e;
+                    el = el.parentElement;
+                }
+            }
+            return null;
+        }
+        """
+
+        OPTION_SELS = '[role="option"], [role="listbox"] li, div[role="listbox"] span'
         EMAIL_SELS = [
             f'[role="option"]:has-text("{filter_email}")',
             f'[role="option"][title="{filter_email}" i]',
             f'[role="option"][aria-label="{filter_email}" i]'
         ]
+
+        def _unhide_chain(elem_h):
+            try:
+                page.evaluate(r"""(node) => {
+                    let c = node;
+                    while (c && c !== document.body) {
+                        c.style.setProperty('visibility',     'visible', 'important');
+                        c.style.setProperty('opacity',        '1',       'important');
+                        c.style.setProperty('pointer-events', 'auto',    'important');
+                        if (getComputedStyle(c).display === 'none')
+                            c.style.setProperty('display', 'block', 'important');
+                        c = c.parentElement;
+                    }
+                }""", elem_h)
+            except Exception:
+                pass
+
+        def _open_dropdown(elem_h):
+            """Unhide chain, focus, keyboard, then force-click."""
+            _unhide_chain(elem_h)
+            page.wait_for_timeout(200)
+            try:
+                elem_h.focus()
+                page.wait_for_timeout(200)
+            except Exception:
+                pass
+            for key in ['Enter', 'Space', 'ArrowDown']:
+                try:
+                    page.keyboard.press(key)
+                    page.wait_for_timeout(250)
+                except Exception:
+                    pass
+            try:
+                elem_h.click(force=True, timeout=2_000)
+            except Exception:
+                pass
 
         def _check_target_visible() -> bool:
             return any(page.locator(s).count() > 0 for s in EMAIL_SELS)
