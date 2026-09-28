@@ -13,23 +13,62 @@ EXPORTS_DIR = os.path.join(BASE_DIR, "exports")
 LOG_FILE    = os.path.join(BASE_DIR, "automation.log")
 
 # == Power BI (no URL needed - script discovers it automatically) ==============
-# List of reports to export and attach to the email for each AOM.
-REPORTS = [
+# List of "target groups" -- each group is a designation to filter/email by
+# (AOM, Cluster Manager, ...). Each group has its own slicer label in the
+# report, its own Store Master columns to read values/delivery-emails from,
+# and its own list of reports to export + attach into one email per target.
+#
+# Per-report keys:
+#   filter_column -- which Store Master column's value to type into the
+#                    slicer (usually == the group's value_column, but can
+#                    differ, e.g. "AOM Mail Id" for a report whose slicer
+#                    searches by email instead of name).
+#   date_from / date_to -- "yesterday" | "month_start" | "today" |
+#                    a literal "YYYY-MM-DD" date | None to skip setting the
+#                    Date slicer entirely.
+#   page          -- exact page name to export only that page, or None to
+#                    export the whole report.
+TARGET_GROUPS = [
     {
-        "workspace":     "Franchise Operations",
-        "name":          "EBO Report -8 Day Wise Sale",
-        "url":           "https://app.powerbi.com/groups/81d975dc-05d1-4d4e-b805-f5886368e433/reports/63ea6b56-c09f-410d-a7ce-31381c174223/f23a123c62d0a018a02e",
-        "filter_table":  "Store Master",
-        "filter_column": "AOM",
-    }
-    # To add more reports, simply copy the dictionary above:
+        "group_name":      "AOM",
+        "slicer_label":    "AOM",
+        "value_column":    "AOM",
+        "delivery_column": "AutoEmail",
+        "reports": [
+            {
+                "workspace":     "Franchise Operations",
+                "name":          "EBO Report -8 Day Wise Sale",
+                "url":           "https://app.powerbi.com/groups/81d975dc-05d1-4d4e-b805-f5886368e433/reports/63ea6b56-c09f-410d-a7ce-31381c174223/f23a123c62d0a018a02e",
+                "filter_column": "AOM",
+                "date_from":     None,
+                "date_to":       None,
+                "page":          None,
+            },
+            {
+                "workspace":     "Franchise Operations",
+                "name":          "EBO Report -5 DSR",
+                "url":           "https://app.powerbi.com/groups/81d975dc-05d1-4d4e-b805-f5886368e433/reports/243700e6-fe17-4947-979e-f930fb07bb3e/ce3648bb53e8b9a3ea91",
+                "filter_column": "AOM",
+                "date_from":     None,
+                "date_to":       None,
+                "page":          None,
+            },
+        ],
+    },
+    # To add another designation (e.g. Cluster Manager), copy the group above
+    # and point value_column/delivery_column at the right Store Master
+    # columns. NOTE: Store Master currently has "Cluster Manager" and
+    # "Cluster Manager Mail Id" but no dedicated delivery-email column for
+    # Cluster Managers yet (only a single "AutoEmail" column, which is
+    # per-store/per-AOM) -- add that column to Store Master before
+    # activating a Cluster Manager group, e.g.:
     # {
-        "workspace":     "Franchise Operations",
-         "name":          "EBO Report -5 DSR",
-          "url": "https://app.powerbi.com/groups/81d975dc-05d1-4d4e-b805-f5886368e433/reports/243700e6-fe17-4947-979e-f930fb07bb3e/ce3648bb53e8b9a3ea91",
-         "filter_table":  "Store Master",
-         "filter_column": "AOM",
-    # }
+    #     "group_name":      "Cluster Manager",
+    #     "slicer_label":    "Cluster Manager",
+    #     "value_column":    "Cluster Manager",
+    #     "delivery_column": "Cluster Manager AutoEmail",   # <- doesn't exist yet
+    #     "reports": [ ... ],
+    # },
 ]
 
 # == Zoho SMTP =================================================================

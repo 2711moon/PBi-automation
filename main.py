@@ -8,24 +8,25 @@ Usage:
 Flow:
     1. Wait until SEND_AT (skipped with --now)
     2. Prompt for Power BI email + password in terminal
-    3. Log into Power BI (headless browser)
-    4. Phase 1: Export + email for ALL AOMs
-    5. Phase 2: Retry failed AOMs (if any, asks for permission)
-    6. Phase 3: Retry still-failed AOMs (auto, no prompt)
-    7. Print per-phase + final consolidated summary
+    3. For each target group (AOM, Cluster Manager, ...):
+         Phase 1: Export + email for every target in the group
+    4. If any group had Phase-1 failures: ONE combined permission prompt,
+       then Phase 2 (retry) -> Phase 3 (auto retry) per failing group
+    5. Print per-phase + final consolidated summary per group
 """
 import os
 import sys
 import time
 import logging
 import getpass
-from datetime import datetime, date
+from collections import defaultdict
+from datetime import datetime, date, timedelta
 
 import openpyxl
 
 from config import (
     STOREMASTER, EXPORTS_DIR, LOG_FILE,
-    EMAIL_SUBJECT, EMAIL_BODY, SEND_AT, REPORTS
+    EMAIL_SUBJECT, EMAIL_BODY, SEND_AT, TARGET_GROUPS
 )
 from powerbi import PowerBIExporter
 from mailer import Mailer
@@ -86,10 +87,44 @@ def prompt_credentials():
     return email, password
 
 
-def load_aoms():
-    """Read Store Master.xlsx and return a list of unique AOMs."""
-    wb  = openpyxl.load_workbook(STOREMASTER, data_only=True)
-    ws  = wb.active
+def resolve_date(keyword_or_literal):
+    """
+    Resolve a report_cfg date_from/date_to value to the "M/D/YYYY" string
+    (no leading zeros) that the Date slicer's input fields expect.
+      "yesterday"    -> today - 1 day
+      "today"        -> today
+      "month_start"  -> the 1st of the current month
+      "YYYY-MM-DD"   -> that literal date
+      None           -> None (date slicer left untouched)
+    """
+    if not keyword_or_literal:
+        return None
+    kw = keyword_or_literal.strip().lower()
+    today_d = date.today()
+    if kw == "yesterday":
+        d = today_d - timedelta(days=1)
+    elif kw == "today":
+        d = today_d
+    elif kw == "month_start":
+        d = today_d.replace(day=1)
+    else:
+        d = datetime.strptime(keyword_or_literal.strip(), "%Y-%m-%d").date()
+    return f"{d.month}/{d.day}/{d.year}"
+
+
+def load_targets(group: dict) -> list:
+    """
+    Read Store Master.xlsx and return a list of unique targets for this
+    group: {"name": ..., "delivery_email": ..., "columns": {col: value}}.
+
+    `columns` holds every Store Master column referenced by the group's own
+    value_column plus any report's filter_column (which can differ from
+    value_column, e.g. "AOM Mail Id" for a report whose slicer searches by
+    email instead of name) -- so export_for_target can look up whichever
+    value a given report needs.
+    """
+    wb = openpyxl.load_workbook(STOREMASTER, data_only=True)
+    ws = wb.active
 
     # Unhide all rows and columns unconditionally
     changed = False
@@ -108,27 +143,38 @@ def load_aoms():
 
     hdr = [c.value for c in next(ws.iter_rows(min_row=1, max_row=1))]
 
-    idx_aom        = hdr.index("AOM")
-    idx_fmail      = hdr.index("AOM Mail Id")
-    idx_auto_email = hdr.index("AutoEmail")
+    value_column    = group["value_column"]
+    delivery_column = group["delivery_column"]
+    referenced_columns = {value_column}
+    for report_cfg in group["reports"]:
+        referenced_columns.add(report_cfg.get("filter_column", value_column))
 
-    seen, aoms = set(), []
+    idx_value    = hdr.index(value_column)
+    idx_delivery = hdr.index(delivery_column)
+    idx_by_col   = {col: hdr.index(col) for col in referenced_columns}
+
+    seen, targets = set(), []
     for row in ws.iter_rows(min_row=2, values_only=True):
-        aom_name   = row[idx_aom]
-        aom_mail   = row[idx_fmail]
-        auto_email = row[idx_auto_email]
-        if not (aom_name and aom_mail and auto_email):
+        name  = row[idx_value]
+        dmail = row[idx_delivery]
+        if not (name and dmail):
             continue
-        if aom_name in seen:
+        name = str(name).strip()
+        if name in seen:
             continue
-        seen.add(aom_name)
-        aoms.append({
-            "name":           str(aom_name).strip(),
-            "filter_email":   str(aom_mail).strip(),
-            "filter_name":    str(aom_name).strip(),
-            "delivery_email": str(auto_email).strip(),
+        seen.add(name)
+
+        columns = {}
+        for col, idx in idx_by_col.items():
+            v = row[idx]
+            columns[col] = str(v).strip() if v else None
+
+        targets.append({
+            "name":           name,
+            "delivery_email": str(dmail).strip(),
+            "columns":        columns,
         })
-    return aoms
+    return targets
 
 
 def cleanup_pdfs():
@@ -182,20 +228,20 @@ def print_phase_summary(phase_num: int, succeeded: list, failed: list):
     log.info("")
 
 
-def print_final_summary(total: int,
+def print_final_summary(group_name: str, total: int,
                         p1_ok: list, p1_fail: list,
                         p2_ok: list, p2_fail: list,
                         p3_ok: list, p3_fail: list):
-    """Print the consolidated final summary across all phases."""
+    """Print the consolidated final summary across all phases for one group."""
     all_sent   = p1_ok + p2_ok + p3_ok
     all_failed = p3_fail if p3_fail is not None else (p2_fail if p2_fail is not None else p1_fail)
     w = 52
 
     log.info("")
     log.info("╔" + "═" * w + "╗")
-    log.info(f"║  FINAL SUMMARY" + " " * (w - 15) + "║")
+    log.info(f"║  FINAL SUMMARY — {group_name}" + " " * max(0, w - 17 - len(group_name)) + "║")
     log.info("╠" + "═" * w + "╣")
-    log.info(f"║  Total AOMs     : {total:<33}║")
+    log.info(f"║  Total targets  : {total:<33}║")
     log.info(f"║  ✅ Emails sent : {len(all_sent):<33}║")
     log.info(f"║  ❌ Manual reqd : {len(all_failed):<33}║")
 
@@ -218,48 +264,59 @@ def print_final_summary(total: int,
 
 # == Core export loop ==========================================================
 
-def run_phase(exporter: "PowerBIExporter", mailer: "Mailer",
-              aoms: list, all_aoms: list, today: str, phase_num: int) -> tuple:
+def run_group_phase(exporter: "PowerBIExporter", mailer: "Mailer", group: dict,
+                     targets: list, all_group_targets: list, today: str, phase_num: int) -> tuple:
     """
-    Run a single export+email phase for the given list of AOMs.
+    Run a single export+email phase for the given targets within one group.
 
-    Returns (succeeded_names, failed_names) — both are plain lists of AOM names.
+    Report-outer, target-inner: each report in the group is prepared
+    (navigated to, date range + page set) exactly ONCE, then every target
+    is looped applying just the slicer filter -- reusing the existing
+    3-attempt search+scroll engine unchanged.
+
+    A target is only counted as fully "succeeded" (for retry purposes) if
+    it got a PDF from EVERY report in the group. A target that got at least
+    one PDF but not all of them still receives an email (partial data beats
+    no data) but is ALSO returned in `failed` so Phase 2/3 retries it.
+
+    Returns (succeeded_names, failed_names) -- both plain lists of target names.
     """
-    succeeded, failed = [], []
+    slicer_label = group["slicer_label"]
+    reports      = group["reports"]
 
-    for aom in aoms:
-        name  = aom["name"]
-        dmail = aom["delivery_email"]
+    pdfs_by_target        = defaultdict(list)
+    report_success_count  = defaultdict(int)
 
-        log.info(f"\nPhase {phase_num} — Processing AOM: {name}")
+    for report_cfg in reports:
+        report_name = report_cfg["name"]
 
-        pdfs = []
-        for report_cfg in REPORTS:
-            report_name   = report_cfg["name"]
-            filter_column = report_cfg.get("filter_column", "AOM")
+        resolved_cfg = dict(report_cfg)
+        resolved_cfg["date_from"] = resolve_date(report_cfg.get("date_from"))
+        resolved_cfg["date_to"]   = resolve_date(report_cfg.get("date_to"))
 
-            filter_value = (aom["filter_email"] if filter_column == "AOM Mail Id"
-                            else aom["filter_name"])
+        log.info(f"\nPhase {phase_num} [{group['group_name']}] — Preparing report: {report_name}")
+        try:
+            exporter.prepare_report(resolved_cfg, slicer_label)
+        except Exception as e:
+            log.error(f"  Failed to prepare report '{report_name}': {e} -- skipping this report for all targets.")
+            continue
 
-            other_filters = [
-                (a["filter_email"] if filter_column == "AOM Mail Id" else a["filter_name"])
-                for a in all_aoms if a["name"] != name
-            ]
+        for target in targets:
+            other_targets = [t for t in all_group_targets if t["name"] != target["name"]]
+            log.info(f"  -> Exporting for: {target['name']}")
 
-            log.info(f"  -> Exporting report: {report_name} (filter: {filter_column} = {filter_value})")
-
-            pdf = exporter.export_report(
-                filter_email=filter_value,
-                aom_name=name,
-                date_str=today,
-                other_emails=other_filters,
-                report_cfg=report_cfg
-            )
-
+            pdf = exporter.export_for_target(target, resolved_cfg, slicer_label, other_targets, today)
             if pdf:
-                pdfs.append(pdf)
+                pdfs_by_target[target["name"]].append(pdf)
+                report_success_count[target["name"]] += 1
             else:
-                log.error(f"  Export failed for report '{report_name}' -- skipping this attachment for {name}")
+                log.error(f"  Export failed for report '{report_name}' -- skipping this attachment for {target['name']}")
+
+    succeeded, failed = [], []
+    for target in targets:
+        name  = target["name"]
+        dmail = target["delivery_email"]
+        pdfs  = pdfs_by_target.get(name, [])
 
         if not pdfs:
             log.error(f"  All exports failed -- skipping email for {name}")
@@ -271,10 +328,19 @@ def run_phase(exporter: "PowerBIExporter", mailer: "Mailer",
             body    = EMAIL_BODY.format(aom_name=name, date=today)
             mailer.send(dmail, subject, body, attachments=pdfs)
             log.info(f"  Email sent to {dmail} with {len(pdfs)} attachment(s)")
-            succeeded.append(name)
         except Exception as e:
             log.error(f"  Email failed for {name}: {e}")
             failed.append(name)
+            continue
+
+        if report_success_count[name] == len(reports):
+            succeeded.append(name)
+        else:
+            failed.append(name)   # partial -- retry to try to complete it
+            log.warning(
+                f"  {name}: partial success, {report_success_count[name]}/{len(reports)} "
+                f"reports -- emailed anyway, also queued for retry."
+            )
 
     return succeeded, failed
 
@@ -297,65 +363,98 @@ def main():
 
     pbi_email, pbi_password = prompt_credentials()
 
-    aoms  = load_aoms()
-    # Use yesterday's date for the report
-    from datetime import timedelta
+    # Use yesterday's date for filenames/subject lines
     target_date = (date.today() - timedelta(days=1)).strftime("%d-%b-%Y")
-    
-    log.info(f"Loaded {len(aoms)} AOM(s) from Store Master.xlsx")
-    for a in aoms:
-        log.info(f"  - {a['name']} | filter: {a['filter_name']} | send to: {a['delivery_email']}")
 
-    total  = len(aoms)
     mailer = Mailer()
 
-    # Initialise phase result holders
-    p2_ok, p2_fail = [], None   # None = phase did not run
-    p3_ok, p3_fail = [], None
+    # Load targets for every group up front
+    group_targets = {}
+    for group in TARGET_GROUPS:
+        gname = group["group_name"]
+        targets = load_targets(group)
+        group_targets[gname] = targets
+        log.info(f"Loaded {len(targets)} target(s) for group '{gname}' from Store Master.xlsx")
+        for t in targets:
+            log.info(f"  - {t['name']} | send to: {t['delivery_email']}")
+
+    # Phase-result holders per group
+    phase_results = {
+        g["group_name"]: {"p1_ok": [], "p1_fail": [], "p2_ok": [], "p2_fail": None, "p3_ok": [], "p3_fail": None}
+        for g in TARGET_GROUPS
+    }
 
     with PowerBIExporter(pbi_email, pbi_password) as exporter:
 
-        # ── Phase 1: all AOMs ────────────────────────────────────────────────
-        log.info("\n" + "=" * 55)
-        log.info("  PHASE 1 — Processing all AOMs")
-        log.info("=" * 55)
-        p1_ok, p1_fail = run_phase(exporter, mailer, aoms, aoms, target_date, phase_num=1)
-        print_phase_summary(1, p1_ok, p1_fail)
+        # ── Phase 1: every group, back-to-back ──────────────────────────────
+        for group in TARGET_GROUPS:
+            gname   = group["group_name"]
+            targets = group_targets[gname]
+            if not targets:
+                log.info(f"\n  Group '{gname}': 0 targets loaded -- skipping.")
+                continue
 
-        # ── Phase 2: retry Phase 1 failures (ask permission) ─────────────────────
-        if p1_fail:
-            print(f"\n  {len(p1_fail)} AOM(s) failed in Phase 1.")
+            log.info("\n" + "=" * 55)
+            log.info(f"  PHASE 1 [{gname}] — Processing all targets")
+            log.info("=" * 55)
+            p1_ok, p1_fail = run_group_phase(exporter, mailer, group, targets, targets, target_date, phase_num=1)
+            print_phase_summary(1, p1_ok, p1_fail)
+            phase_results[gname]["p1_ok"]   = p1_ok
+            phase_results[gname]["p1_fail"] = p1_fail
+
+        # ── Phase 2: retry Phase 1 failures across all groups (ask ONE permission) ──
+        failing_groups   = [g for g in TARGET_GROUPS if phase_results[g["group_name"]]["p1_fail"]]
+        total_p1_failed  = sum(len(phase_results[g["group_name"]]["p1_fail"]) for g in failing_groups)
+
+        if total_p1_failed:
+            print(f"\n  {total_p1_failed} target(s) across {len(failing_groups)} group(s) failed in Phase 1.")
             answer = input("  Run Phase 2 to retry them? [Y/n]: ").strip().lower()
             if answer in ("", "y", "yes"):
-                retry_aoms = [a for a in aoms if a["name"] in p1_fail]
-                log.info("\n" + "=" * 55)
-                log.info("  PHASE 2 — Retrying failed AOMs")
-                log.info("=" * 55)
-                log.info("  Re-logging in for a fresh session before Phase 2...")
-                exporter.relogin()
-                p2_ok, p2_fail = run_phase(exporter, mailer, retry_aoms, aoms, target_date, phase_num=2)
-                print_phase_summary(2, p2_ok, p2_fail)
+                for group in failing_groups:
+                    gname   = group["group_name"]
+                    targets = group_targets[gname]
+                    p1_fail = phase_results[gname]["p1_fail"]
+                    retry_targets = [t for t in targets if t["name"] in p1_fail]
 
-                # ── Phase 3: retry Phase 2 failures (automatic) ─────────────────
-                if p2_fail:
-                    retry_aoms = [a for a in aoms if a["name"] in p2_fail]
                     log.info("\n" + "=" * 55)
-                    log.info("  PHASE 3 — Final retry (automatic)")
+                    log.info(f"  PHASE 2 [{gname}] — Retrying failed targets")
                     log.info("=" * 55)
-                    log.info("  Re-logging in for a fresh session before Phase 3...")
+                    log.info("  Re-logging in for a fresh session before Phase 2...")
                     exporter.relogin()
-                    p3_ok, p3_fail = run_phase(exporter, mailer, retry_aoms, aoms, target_date, phase_num=3)
-                    print_phase_summary(3, p3_ok, p3_fail)
-                else:
-                    log.info("  Phase 2 achieved 100% success — Phase 3 not needed.")
+                    p2_ok, p2_fail = run_group_phase(exporter, mailer, group, retry_targets, targets, target_date, phase_num=2)
+                    print_phase_summary(2, p2_ok, p2_fail)
+                    phase_results[gname]["p2_ok"]   = p2_ok
+                    phase_results[gname]["p2_fail"] = p2_fail
+
+                    # ── Phase 3: retry Phase 2 failures (automatic) ─────────
+                    if p2_fail:
+                        retry_targets = [t for t in targets if t["name"] in p2_fail]
+                        log.info("\n" + "=" * 55)
+                        log.info(f"  PHASE 3 [{gname}] — Final retry (automatic)")
+                        log.info("=" * 55)
+                        log.info("  Re-logging in for a fresh session before Phase 3...")
+                        exporter.relogin()
+                        p3_ok, p3_fail = run_group_phase(exporter, mailer, group, retry_targets, targets, target_date, phase_num=3)
+                        print_phase_summary(3, p3_ok, p3_fail)
+                        phase_results[gname]["p3_ok"]   = p3_ok
+                        phase_results[gname]["p3_fail"] = p3_fail
+                    else:
+                        log.info(f"  Group '{gname}': Phase 2 achieved 100% success — Phase 3 not needed.")
             else:
                 log.info("  Phase 2 skipped by user.")
         else:
-            log.info("  Phase 1 achieved 100% success — Phase 2 and Phase 3 not needed.")
+            log.info("  Phase 1 achieved 100% success across all groups — Phase 2 and Phase 3 not needed.")
 
-    # ── Cleanup + final summary ───────────────────────────────────────────────
+    # ── Cleanup + final summary (one block per group) ────────────────────────
     cleanup_pdfs()
-    print_final_summary(total, p1_ok, p1_fail, p2_ok, p2_fail, p3_ok, p3_fail)
+    for group in TARGET_GROUPS:
+        gname = group["group_name"]
+        targets = group_targets[gname]
+        if not targets:
+            continue
+        r = phase_results[gname]
+        print_final_summary(gname, len(targets), r["p1_ok"], r["p1_fail"],
+                             r["p2_ok"], r["p2_fail"], r["p3_ok"], r["p3_fail"])
 
 
 if __name__ == "__main__":

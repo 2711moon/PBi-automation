@@ -10,6 +10,7 @@ Runs headless (invisible) - no browser window appears during execution.
 """
 import os
 import re
+import json
 import logging
 from typing import Optional
 
@@ -31,49 +32,67 @@ class PowerBIExporter:
     then exports a filtered PDF for each AOM.
     """
 
-    # JS used to extract "verifiable" page text for the conflict/presence checks.
-    # Scoped to the "AOM Wise Sales Summary" table when present, because other
-    # tables in the report (Cluster-wise, Zone/OPS Head-wise) show staff names
-    # (Cluster Manager, Operation Head, ...) that can coincidentally match a
-    # DIFFERENT AOM's name and cause a false "data conflict" even though the
-    # actual AOM-level filter is correct. Falls back to the whole page (minus
-    # slicer DOM, which stores every option's text even while closed) if that
-    # table heading can't be found.
-    _SCOPED_VERIFY_TEXT_JS = r"""
-    () => {
-        // Clone the body so we don't mutate the live DOM
-        let clone = document.body.cloneNode(true);
-        // Remove all slicer-related elements — they store all option
-        // names in the DOM even when the dropdown is closed, which
-        // would cause false "conflict" detections.
-        clone.querySelectorAll(
-            '.slicer-container, .visual-slicer, ' +
-            '[class*="slicer"], [class*="Slicer"], ' +
-            '.slicerDropdownMenu, [role="listbox"], ' +
-            '[aria-label*="slicer"], [aria-label*="Slicer"]'
-        ).forEach(el => el.remove());
+    def _scoped_verify_text_js(self, slicer_label: str, verify_heading: str = None) -> str:
+        """
+        Build the JS used to extract "verifiable" page text for the
+        conflict/presence checks. Scoped to a "{slicer_label} Wise Sales
+        Summary"-style table heading when present, because other tables in
+        the report (Cluster-wise, Zone/OPS Head-wise) show staff names
+        (Cluster Manager, Operation Head, ...) that can coincidentally match
+        a DIFFERENT target's name and cause a false "data conflict" even
+        though the actual filter is correct. Falls back to the whole page
+        (minus slicer DOM, which stores every option's text even while
+        closed) if that table heading can't be found.
 
-        // Try to scope to the "AOM Wise Sales Summary" table specifically —
-        // that's the only section that reflects the actual AOM-level filter.
-        const leafNodes = Array.from(clone.querySelectorAll('*')).filter(
-            el => el.children.length === 0
-        );
-        const heading = leafNodes.find(
-            el => /AOM\s*Wise\s*Sales\s*Summary/i.test(el.textContent || '')
-        );
-        if (heading) {
-            let container = heading;
-            for (let i = 0; i < 6 && container.parentElement; i++) {
-                container = container.parentElement;
-                if (container.querySelectorAll('table, [role="grid"], [role="row"]').length > 0) {
-                    break;
+        `verify_heading` lets a specific report override the default
+        "{slicer_label} Wise Sales Summary" heading pattern if its actual
+        table heading text doesn't follow that convention.
+        """
+        if verify_heading:
+            heading_pattern = verify_heading
+        else:
+            # Escape the label for regex use, then let any whitespace inside
+            # it (e.g. "Cluster Manager") match flexibly (\s*) same as the
+            # rest of the pattern, rather than requiring an exact single space.
+            escaped_label = re.sub(r"\s+", r"\\s*", re.escape(slicer_label))
+            heading_pattern = escaped_label + r"\s*Wise\s*Sales\s*Summary"
+        heading_js = json.dumps(heading_pattern)
+        return r"""
+        () => {
+            // Clone the body so we don't mutate the live DOM
+            let clone = document.body.cloneNode(true);
+            // Remove all slicer-related elements — they store all option
+            // names in the DOM even when the dropdown is closed, which
+            // would cause false "conflict" detections.
+            clone.querySelectorAll(
+                '.slicer-container, .visual-slicer, ' +
+                '[class*="slicer"], [class*="Slicer"], ' +
+                '.slicerDropdownMenu, [role="listbox"], ' +
+                '[aria-label*="slicer"], [aria-label*="Slicer"]'
+            ).forEach(el => el.remove());
+
+            // Try to scope to the target summary table specifically — that's
+            // the only section that reflects the actual target-level filter.
+            const leafNodes = Array.from(clone.querySelectorAll('*')).filter(
+                el => el.children.length === 0
+            );
+            const headingRe = new RegExp(__HEADING_PATTERN__, 'i');
+            const heading = leafNodes.find(
+                el => headingRe.test(el.textContent || '')
+            );
+            if (heading) {
+                let container = heading;
+                for (let i = 0; i < 6 && container.parentElement; i++) {
+                    container = container.parentElement;
+                    if (container.querySelectorAll('table, [role="grid"], [role="row"]').length > 0) {
+                        break;
+                    }
                 }
+                return container.innerText;
             }
-            return container.innerText;
+            return clone.innerText;
         }
-        return clone.innerText;
-    }
-    """
+        """.replace("__HEADING_PATTERN__", heading_js)
 
     def __init__(self, username: str, password: str):
         self.username     = username
@@ -86,6 +105,7 @@ class PowerBIExporter:
         self._slicer_cache    = {}   # cache: report_name -> slicer index that contains AOM names
         self._aom_trigger_idx = None  # cached index of the AOM slicer in the trigger list
         self._loaded_report_url = None  # url of the report currently loaded in the page (None = not loaded yet)
+        self._loaded_report_state = None  # (url, page, date_from, date_to) tuple currently prepared in the page
 
     # -- Context manager -------------------------------------------------------
 
@@ -330,6 +350,7 @@ class PowerBIExporter:
         self._report_urls.clear()
         self._aom_trigger_idx = None
         self._loaded_report_url = None
+        self._loaded_report_state = None
         page = self._page
         # Navigate to Microsoft logout
         try:
@@ -462,35 +483,25 @@ class PowerBIExporter:
 
     # -- Export ----------------------------------------------------------------
 
-    def export_report(self, filter_email: str, aom_name: str, date_str: str,
-                      other_emails: list = None, report_cfg: dict = None) -> Optional[str]:
+    def prepare_report(self, report_cfg: dict, slicer_label: str) -> str:
         """
-        For this AOM:
-          1. Discover report URL (cached; uses known URL from config if set)
-          2. Navigate to the report ONLY if not already loaded (first AOM for
-             this report, or after a reload) — subsequent AOMs reuse the same
-             live page and just swap the AOM slicer selection.
-          3. Open Filters pane (once per report load)
-          4. Apply filter via slicer (3-attempt cycle, reload only on the 3rd)
-             -> Filters pane card fallback
-          5. Smart-wait until conflicting AOM data disappears
-          6. Verify only the expected AOM data is on screen
-          7. Export as PDF
+        Navigate to `report_cfg`'s report, open the Filters pane, set the
+        date range and select the target page — but ONLY if this exact
+        (url, page, date_from, date_to) combination isn't already the
+        currently-prepared state, so calling this once per report per
+        group-phase (before looping targets) is cheap on repeat calls.
 
-        Returns local PDF path on success, None on failure.
+        Returns the report URL (used by export_for_target for the attempt-3
+        reload target and PDF/screenshot naming).
         """
-        if not report_cfg:
-            raise ValueError("report_cfg is required")
+        workspace   = report_cfg["workspace"]
+        report_name = report_cfg["name"]
+        known_url   = report_cfg.get("url")
+        page_name   = report_cfg.get("page")
+        date_from   = report_cfg.get("date_from")
+        date_to     = report_cfg.get("date_to")
 
-        workspace     = report_cfg["workspace"]
-        report_name   = report_cfg["name"]
-        filter_column = report_cfg.get("filter_column", "AOM")
-
-        known_url = report_cfg.get("url")
-
-        # Step 1: Discover report URL (cached after first call).
-        # Always navigates through workspace first to establish a session,
-        # then uses known_url if available to bypass virtual-scroll list.
+        # Discover report URL (cached after first call per workspace/report).
         if (workspace, report_name) not in self._report_urls:
             self._report_urls[(workspace, report_name)] = self._discover_report_url(
                 workspace, report_name, known_url=known_url
@@ -498,12 +509,9 @@ class PowerBIExporter:
         report_url = self._report_urls[(workspace, report_name)]
 
         page = self._page
+        state_key = (report_url, page_name, date_from, date_to)
 
-        # Step 2 & 3: Navigate + open Filters pane only if this report isn't
-        # already the one loaded in the page (first AOM for it, or we just
-        # switched reports). No per-AOM reload — subsequent AOMs stay on the
-        # same live page and just swap the AOM slicer selection.
-        if self._loaded_report_url != report_url:
+        if self._loaded_report_state != state_key:
             log.info(f"  Navigating to report (clean state)...")
             page.goto(report_url, timeout=NAV_TIMEOUT, wait_until="domcontentloaded")
             page.wait_for_timeout(4_000)
@@ -515,21 +523,75 @@ class PowerBIExporter:
             self._open_filters_pane()
             page.wait_for_timeout(1_500)
 
+            if date_from and date_to:
+                self._set_date_filter(date_from, date_to)
+            if page_name:
+                self._select_report_page(page_name)
+
+            self._loaded_report_state = state_key
             self._loaded_report_url = report_url
 
-        # Step 4: Set filter via UI (owns its own 3-attempt cycle, reloading
-        # only if attempts 1 & 2 both fail).
-        log.info(f"  Setting filter: {filter_column} = {filter_email}")
-        if not self._apply_filter_via_pane(filter_email, filter_column, report_url):
-            log.error(
-                f"  FILTER APPLY FAILED \u2014 {aom_name}:\n"
-                f"  Could not set '{filter_column}' = '{filter_email}' in UI.\n"
-                f"  This report will NOT be attached."
-            )
-            self._debug_screenshot(page, f"{aom_name}_{report_name}")
+        return report_url
+
+    def export_for_target(self, target: dict, report_cfg: dict, slicer_label: str,
+                           other_targets: list, date_str: str) -> Optional[str]:
+        """
+        For ONE target within an already-`prepare_report`'d report:
+          1. Apply filter via slicer (3-attempt cycle, reload only on the 3rd)
+             -> Filters pane card fallback
+          2. Smart-wait until conflicting data (from other_targets) disappears
+          3. Verify only the expected target's data is on screen
+          4. Export as PDF
+
+        Returns local PDF path on success, None on failure.
+        """
+        workspace      = report_cfg["workspace"]
+        report_name    = report_cfg["name"]
+        filter_column  = report_cfg.get("filter_column", slicer_label)
+        page_name      = report_cfg.get("page")
+        date_from      = report_cfg.get("date_from")
+        date_to        = report_cfg.get("date_to")
+        verify_heading = report_cfg.get("verify_heading")
+
+        report_url = self._report_urls.get((workspace, report_name))
+        if not report_url:
+            # Defensive: should already be set by prepare_report().
+            report_url = self.prepare_report(report_cfg, slicer_label)
+
+        target_name  = target["name"]
+        filter_value = target["columns"].get(filter_column)
+        if not filter_value:
+            log.error(f"  Target '{target_name}' has no value for column '{filter_column}' — skipping.")
             return None
 
-        # Step 5: Smart wait – poll until other AOM emails are gone from the page
+        other_values = [t["columns"].get(filter_column) for t in other_targets]
+        other_values = [v for v in other_values if v]
+
+        page = self._page
+
+        def _reprepare_after_reload():
+            # Called by _apply_filter_via_pane's attempt-3 reload path to
+            # re-apply the page/date state lost by the reload — otherwise
+            # subsequent targets in this report would silently export the
+            # wrong page/date range.
+            if date_from and date_to:
+                self._set_date_filter(date_from, date_to)
+            if page_name:
+                self._select_report_page(page_name)
+            self._loaded_report_state = (report_url, page_name, date_from, date_to)
+
+        log.info(f"  Setting filter: {filter_column} = {filter_value}")
+        if not self._apply_filter_via_pane(filter_value, filter_column, report_url,
+                                            slicer_label, reprepare_fn=_reprepare_after_reload):
+            log.error(
+                f"  FILTER APPLY FAILED \u2014 {target_name}:\n"
+                f"  Could not set '{filter_column}' = '{filter_value}' in UI.\n"
+                f"  This report will NOT be attached."
+            )
+            self._debug_screenshot(page, f"{target_name}_{report_name}")
+            return None
+
+        # Smart wait: poll until other targets' data disappears from the page
         MAX_WAIT_SEC  = 90
         POLL_INTERVAL = 5_000   # ms
         elapsed_sec   = 0
@@ -541,36 +603,38 @@ class PowerBIExporter:
             try:
                 page.keyboard.press("Escape")
                 page.wait_for_timeout(200)
-                page_text = page.evaluate(self._SCOPED_VERIFY_TEXT_JS)
+                page_text = page.evaluate(self._scoped_verify_text_js(slicer_label, verify_heading))
                 page_text_lower = page_text.lower()
-                conflicts = [e for e in (other_emails or []) if e.lower() in page_text_lower]
+                conflicts = [v for v in other_values if v.lower() in page_text_lower]
                 if not conflicts:
                     log.info(
                         f"  Data looks clean after {elapsed_sec}s "
-                        f"\u2014 no other AOM emails found. Proceeding."
+                        f"\u2014 no other {slicer_label} values found. Proceeding."
                     )
                     break
                 log.info(
                     f"  [{elapsed_sec}s] Still waiting \u2014 "
-                    f"conflicting emails present: {', '.join(conflicts)}"
+                    f"conflicting values present: {', '.join(conflicts)}"
                 )
             except Exception:
                 pass
 
-        if not self._verify_filter_on_screen(filter_email, f"{aom_name}_{report_name}", other_emails or []):
+        if not self._verify_filter_on_screen(filter_value, f"{target_name}_{report_name}",
+                                              other_values, slicer_label, verify_heading):
             return None
 
-        # Step 6: Export
-        safe_aom = "".join(c if c.isalnum() or c in " _-" else "_" for c in aom_name).strip().replace(" ", "_")
+        # Export
+        safe_target = "".join(c if c.isalnum() or c in " _-" else "_" for c in target_name).strip().replace(" ", "_")
         safe_rep = "".join(c if c.isalnum() or c in " _-" else "_" for c in report_name).strip().replace(" ", "_")
-        fname = f"{safe_aom}_{safe_rep}_{date_str}.pdf"
+        fname = f"{safe_target}_{safe_rep}_{date_str}.pdf"
         fpath = os.path.join(EXPORTS_DIR, fname)
 
         try:
-            return self._trigger_pdf_export(page, fpath, f"{aom_name}_{report_name}")
+            return self._trigger_pdf_export(page, fpath, f"{target_name}_{report_name}",
+                                             only_current_page=page_name is not None)
         except Exception as e:
             log.error(f"  Export failed: {e}")
-            self._debug_screenshot(page, f"{aom_name}_{report_name}")
+            self._debug_screenshot(page, f"{target_name}_{report_name}")
             return None
 
     def _open_filters_pane(self) -> bool:
@@ -616,34 +680,155 @@ class PowerBIExporter:
             except Exception:
                 continue
 
-        log.warning("  Could not confirm Filters pane is open â€” continuing anyway.")
+        log.warning("  Could not confirm Filters pane is open — continuing anyway.")
         return False
 
+    def _set_date_filter(self, date_from: str, date_to: str) -> bool:
+        """
+        Set the Date range slicer's From/To fields. `date_from`/`date_to`
+        must already be resolved to the UI's expected display format
+        (M/D/YYYY, no leading zeros, e.g. "9/1/2026" -- see main.py's
+        resolve_date()).
 
-    def _reset_non_aom_slicers(self) -> None:
+        NOTE: this is the least-tested part of the automation (no live
+        browser access to confirm Power BI's exact date-picker interaction
+        during development). Checks the displayed value after each field is
+        set and logs clearly either way, so a failure here is diagnosable
+        from the log alone without another live-debug round-trip.
+        """
+        page = self._page
+        log.info(f"  Setting Date slicer: {date_from} -> {date_to}...")
+
+        try:
+            # Find the "Date" slicer's container (walk up from the label text
+            # until we find an ancestor holding 2+ <input> fields).
+            container_h = page.evaluate_handle(r"""
+            () => {
+                const walker = document.createTreeWalker(
+                    document.body, NodeFilter.SHOW_TEXT, null
+                );
+                let node;
+                while ((node = walker.nextNode())) {
+                    if (node.textContent.trim() !== 'Date') continue;
+                    let el = node.parentElement;
+                    for (let i = 0; i < 8; i++) {
+                        if (!el || el === document.body) break;
+                        if (el.querySelectorAll('input').length >= 2) return el;
+                        el = el.parentElement;
+                    }
+                }
+                return null;
+            }
+            """)
+            container = container_h.as_element()
+            if not container:
+                log.warning("  Date slicer container not found — skipping date filter.")
+                return False
+
+            date_inputs = container.query_selector_all('input')
+            if len(date_inputs) < 2:
+                log.warning(f"  Date slicer: expected 2 date inputs, found {len(date_inputs)} — skipping.")
+                return False
+
+            from_input, to_input = date_inputs[0], date_inputs[1]
+
+            def _set_one(input_handle, value: str, label: str) -> bool:
+                try:
+                    input_handle.click(force=True, timeout=2_000)
+                    page.wait_for_timeout(200)
+                    input_handle.press("Control+A")
+                    input_handle.press("Backspace")
+                    input_handle.type(value, delay=30)
+                    page.wait_for_timeout(200)
+                    input_handle.press("Tab")
+                    page.wait_for_timeout(500)
+                    try:
+                        actual = input_handle.input_value()
+                    except Exception:
+                        actual = None
+                    if actual is not None and actual.strip() == value.strip():
+                        log.info(f"  Date {label} set to '{value}' ✓")
+                        return True
+                    log.warning(
+                        f"  Date {label}: typed '{value}' but field now shows "
+                        f"'{actual}' — may not have applied."
+                    )
+                    return False
+                except Exception as e:
+                    log.warning(f"  Date {label} set failed: {e}")
+                    return False
+
+            ok_from = _set_one(from_input, date_from, "From")
+            ok_to = _set_one(to_input, date_to, "To")
+            page.keyboard.press('Escape')  # close any date-picker popup left open
+            page.wait_for_timeout(1_000)
+            self._handle_identity_prompt(quick=True)
+            return ok_from and ok_to
+        except Exception as e:
+            log.warning(f"  _set_date_filter failed: {e}")
+            return False
+
+    def _select_report_page(self, page_name: str) -> bool:
+        """
+        Click the given page in the left Pages panel to make it the active
+        page. Used before exporting when a report_cfg specifies a single
+        "page" to export instead of the whole multi-page report.
+        """
+        page = self._page
+        log.info(f"  Selecting page '{page_name}'...")
+        try:
+            # Page names can be truncated with an ellipsis in the UI, so try
+            # an exact match first, then a "starts with" fallback, then the
+            # title attribute (often holds the untruncated name as a tooltip).
+            candidates = [
+                page.get_by_text(page_name, exact=True),
+                page.locator(f'[title="{page_name}"]'),
+                page.get_by_text(re.compile("^" + re.escape(page_name))),
+            ]
+            for loc in candidates:
+                try:
+                    el = loc.first
+                    if el.is_visible(timeout=2_000):
+                        el.click(force=True, timeout=3_000)
+                        page.wait_for_timeout(2_000)
+                        log.info(f"  Page '{page_name}' selected.")
+                        return True
+                except Exception:
+                    continue
+            log.warning(
+                f"  Could not find page '{page_name}' in the Pages panel — "
+                f"export may include the wrong page."
+            )
+            return False
+        except Exception as e:
+            log.warning(f"  _select_report_page failed: {e}")
+            return False
+
+    def _reset_other_slicers(self, skip_label: str) -> None:
         """
         CRITICAL: The report is saved with 'Operation Support = Anuradha Mishra'
-        which cross-filters the AOM dropdown to show only ~3 names.
-        Reset every slicer EXCEPT AOM to 'All' so all 41 AOMs appear.
+        which cross-filters the target slicer to show only a handful of names.
+        Reset every slicer EXCEPT `skip_label` (the slicer we're about to set)
+        to 'All' so every value appears.
 
         Uses JavaScript to:
         1. Force-reveal and JS-click all eraser buttons (fast, works off-screen)
         2. Falls back to Playwright hover+click if JS found nothing
         """
         page = self._page
-        log.info("  Resetting non-AOM slicers (clearing cross-filters)...")
+        log.info(f"  Resetting other slicers (clearing cross-filters, keeping '{skip_label}')...")
 
         # --- Primary: pure JavaScript approach ---
-        # Walk the DOM to find the AOM visual container, then click every OTHER
-        # slicer's eraser button using JS (works even when off-screen).
+        # Walk the DOM to find the target slicer's visual container, then click
+        # every OTHER slicer's eraser button using JS (works even when off-screen).
         n_cleared = page.evaluate(r"""
-        () => {
+        (SKIP_LABEL) => {
             let count = 0;
 
-            // ── Step 1: identify the AOM slicer's direct visual container ──
-            // Look for a container whose DIRECT slicer-header text is "AOM"
+            // ── Step 1: identify the target slicer's direct visual container ──
+            // Look for a container whose DIRECT slicer-header text matches
             // (max 6 levels up from the dropdown trigger, not the full page).
-            function findAomContainer() {
+            function findTargetContainer() {
                 const menus = document.querySelectorAll(
                     '.slicerDropdownMenu, [aria-haspopup="listbox"], [role="combobox"]'
                 );
@@ -658,8 +843,8 @@ class PowerBIExporter:
                             + '[class*="labelText"], .title, .slicerTitle'
                         );
                         for (const h of hdrs) {
-                            // textContent.trim() must be EXACTLY 'AOM', not contain it
-                            if (h.textContent.trim() === 'AOM') return p;
+                            // textContent.trim() must EXACTLY match, not just contain
+                            if (h.textContent.trim() === SKIP_LABEL) return p;
                         }
                         p = p.parentElement;
                     }
@@ -667,7 +852,7 @@ class PowerBIExporter:
                 return null;
             }
 
-            const aomContainer = findAomContainer();
+            const aomContainer = findTargetContainer();
 
             // ── Step 2: collect ALL slicer dropdown triggers ──
             const allMenus = document.querySelectorAll(
@@ -736,9 +921,9 @@ class PowerBIExporter:
 
             return count;
         }
-        """)
+        """, skip_label)
 
-        log.info(f"  JavaScript cleared {n_cleared} non-AOM slicer(s).")
+        log.info(f"  JavaScript cleared {n_cleared} other slicer(s).")
 
         # --- Fallback: Playwright hover approach (for elements JS couldn't clear) ---
         if n_cleared == 0:
@@ -751,9 +936,9 @@ class PowerBIExporter:
                 log.info(f"  Playwright found {len(all_menus)} slicer triggers.")
                 for i, menu in enumerate(all_menus):
                     try:
-                        # is_aom: only look 5 levels up and check specific header classes
-                        is_aom = page.evaluate("""
-                        (el) => {
+                        # is_target: only look 5 levels up and check specific header classes
+                        is_target = menu.evaluate("""
+                        (el, SKIP_LABEL) => {
                             let p = el.parentElement;
                             for (let i = 0; i < 5; i++) {
                                 if (!p || p === document.body) break;
@@ -762,15 +947,15 @@ class PowerBIExporter:
                                     + '[class*="labelText"], .title, .slicerTitle'
                                 );
                                 for (const h of hdrs) {
-                                    if (h.textContent.trim() === 'AOM') return true;
+                                    if (h.textContent.trim() === SKIP_LABEL) return true;
                                 }
                                 p = p.parentElement;
                             }
                             return false;
                         }
-                        """, menu)
-                        if is_aom:
-                            log.info(f"  Slicer {i}: AOM — skipping.")
+                        """, skip_label)
+                        if is_target:
+                            log.info(f"  Slicer {i}: '{skip_label}' — skipping.")
                             continue
 
                         # Scroll into view
@@ -828,10 +1013,11 @@ class PowerBIExporter:
 
         page.wait_for_timeout(2_000)  # Let report re-render after clearing
 
-    def _try_slicer(self, filter_email: str) -> bool:
+    def _try_slicer(self, filter_email: str, slicer_label: str = "AOM") -> bool:
         """
-        Attempts to select the given AOM name in the slicer dropdown, ONE time.
-        Implements a Search + Scroll Fallback strategy within this single attempt:
+        Attempts to select the given value in the `slicer_label` slicer's
+        dropdown, ONE time. Implements a Search + Scroll Fallback strategy
+        within this single attempt:
         1. Types the name in the internal search box.
         2. If not found, scrolls down the list sequentially looking for it,
            stopping early once the visible names have passed the target
@@ -840,8 +1026,9 @@ class PowerBIExporter:
         a page reload) is the caller's responsibility (_apply_filter_via_pane).
         """
         page = self._page
-        
-        # JS: find the AOM slicer trigger (prefer .slicerDropdownMenu)
+        slicer_label_js = json.dumps(slicer_label)
+
+        # JS: find the target slicer trigger (prefer .slicerDropdownMenu)
         FIND_TRIGGER_JS = r"""
         () => {
             const walker = document.createTreeWalker(
@@ -849,7 +1036,7 @@ class PowerBIExporter:
             );
             let node;
             while ((node = walker.nextNode())) {
-                if (node.textContent.trim() !== 'AOM') continue;
+                if (node.textContent.trim() !== __LABEL__) continue;
                 let el = node.parentElement;
                 for (let i = 0; i < 10; i++) {
                     if (!el || el === document.body) break;
@@ -864,9 +1051,9 @@ class PowerBIExporter:
             }
             return null;
         }
-        """
+        """.replace("__LABEL__", slicer_label_js)
 
-        # JS: find eraser/clear button near AOM text
+        # JS: find eraser/clear button near the target slicer's label text
         FIND_ERASER_JS = r"""
         () => {
             const walker = document.createTreeWalker(
@@ -874,7 +1061,7 @@ class PowerBIExporter:
             );
             let node;
             while ((node = walker.nextNode())) {
-                if (node.textContent.trim() !== 'AOM') continue;
+                if (node.textContent.trim() !== __LABEL__) continue;
                 let el = node.parentElement;
                 for (let i = 0; i < 8; i++) {
                     if (!el || el === document.body) break;
@@ -889,7 +1076,7 @@ class PowerBIExporter:
             }
             return null;
         }
-        """
+        """.replace("__LABEL__", slicer_label_js)
 
         OPTION_SELS = '[role="option"], [role="listbox"] li, div[role="listbox"] span'
         EMAIL_SELS = [
@@ -990,7 +1177,7 @@ class PowerBIExporter:
                         self._handle_identity_prompt()
                         opt.evaluate('el => el.click()')   # JS click (bypasses overlay)
                         page.wait_for_timeout(1_500)
-                        log.info(f'  Selected \'{filter_email}\' in AOM slicer \u2713')
+                        log.info(f'  Selected \'{filter_email}\' in {slicer_label} slicer \u2713')
                         page.keyboard.press('Escape')
                         page.wait_for_timeout(600)
                         return True
@@ -998,7 +1185,7 @@ class PowerBIExporter:
                     pass
             return False
 
-        log.info(f"  AOM slicer: attempt for '{filter_email}'...")
+        log.info(f"  {slicer_label} slicer: attempt for '{filter_email}'...")
 
         self._handle_identity_prompt()
         self._dismiss_popups()
@@ -1011,7 +1198,7 @@ class PowerBIExporter:
             elem = None
 
         if not elem:
-            log.warning("  AOM slicer trigger not found in DOM.")
+            log.warning(f"  {slicer_label} slicer trigger not found in DOM.")
             return False
 
         # Clear eraser if a previous selection is visible
@@ -1168,51 +1355,63 @@ class PowerBIExporter:
         page.wait_for_timeout(1_000)
         return False
 
-    def _apply_filter_via_pane(self, filter_email: str, filter_column: str, report_url: str = None) -> bool:
+    def _apply_filter_via_pane(self, filter_email: str, filter_column: str, report_url: str = None,
+                                slicer_label: str = "AOM", reprepare_fn=None) -> bool:
         """
-        Set the AOM filter through the Power BI UI (slicer on current page only).
-        The AOM slicer is always on the first/current page — no page-switching needed.
+        Set the `slicer_label` filter through the Power BI UI (slicer on the
+        current page only). Assumes the slicer is on the first/current page.
 
         Runs the full 3-attempt cycle:
-          - Attempt 1: reset slicers, try the AOM slicer (search + scroll fallback).
+          - Attempt 1: reset other slicers, try the slicer (search + scroll fallback).
           - Attempt 2: same, in place, no reload.
           - Attempt 3: only if 1 & 2 both failed — reload the report page once,
-            handle the identity prompt, re-open the Filters pane, reset slicers
-            again, then try the AOM slicer one last time.
+            handle the identity prompt, re-open the Filters pane, re-apply the
+            page/date-range state via `reprepare_fn` (if given), reset other
+            slicers again, then try the slicer one last time.
         Falls back to the Filters pane card if all 3 slicer attempts fail.
         """
         page = self._page
 
         # Attempts 1 & 2: in place, no reload.
         for attempt in (1, 2):
-            log.info(f"  AOM slicer: attempt {attempt}/3 for '{filter_email}'...")
-            self._reset_non_aom_slicers()
-            if self._try_slicer(filter_email):
+            log.info(f"  {slicer_label} slicer: attempt {attempt}/3 for '{filter_email}'...")
+            self._reset_other_slicers(slicer_label)
+            if self._try_slicer(filter_email, slicer_label):
                 return True
 
         # Attempt 3: hard reset (reload) then one more try.
         if report_url:
-            log.warning(f"  AOM slicer: attempts 1 & 2 failed. Reloading report for attempt 3/3...")
+            log.warning(f"  {slicer_label} slicer: attempts 1 & 2 failed. Reloading report for attempt 3/3...")
             page.wait_for_timeout(2_000)
             page.goto(report_url, timeout=NAV_TIMEOUT, wait_until="domcontentloaded")
             page.wait_for_timeout(5_000)
             self._handle_identity_prompt()
             self._open_filters_pane()
             page.wait_for_timeout(1_500)
-            self._reset_non_aom_slicers()
-            log.info(f"  AOM slicer: attempt 3/3 for '{filter_email}' (after reload)...")
-            if self._try_slicer(filter_email):
+            if reprepare_fn is not None:
+                # Re-apply page selection + date range lost by the reload —
+                # otherwise remaining targets in this report would silently
+                # export the wrong page/date after a mid-loop reload.
+                try:
+                    reprepare_fn()
+                except Exception as e:
+                    log.warning(f"  reprepare_fn failed after reload: {e}")
+            self._reset_other_slicers(slicer_label)
+            log.info(f"  {slicer_label} slicer: attempt 3/3 for '{filter_email}' (after reload)...")
+            if self._try_slicer(filter_email, slicer_label):
                 return True
         else:
             log.warning("  No report_url available for attempt 3 reload — skipping to Filters pane fallback.")
 
-        # Fallback: Filters pane card
-        log.info(f"  Step B: Trying Filters pane card for '{filter_column}'...")
+        # Fallback: Filters pane card (search by the slicer's UI label, not
+        # necessarily filter_column -- e.g. filter_column may be "AOM Mail Id"
+        # while the visible card is still labeled "AOM").
+        log.info(f"  Step B: Trying Filters pane card for '{slicer_label}'...")
         card_found = False
         try:
             card = page.locator(
                 'filter-pane, .filterPane, [aria-label="Filters"]'
-            ).get_by_text(filter_column, exact=True).first
+            ).get_by_text(slicer_label, exact=True).first
             card.wait_for(state="visible", timeout=5_000)
             card.click(force=True)
             page.wait_for_timeout(1_500)
@@ -1258,7 +1457,8 @@ class PowerBIExporter:
         return False
 
     def _verify_filter_on_screen(self, filter_email: str, aom_name: str,
-                                  other_emails: list) -> bool:
+                                  other_emails: list, slicer_label: str = "AOM",
+                                  verify_heading: str = None) -> bool:
         """
         Screenshot the current report state and read all visible page text.
 
@@ -1296,7 +1496,7 @@ class PowerBIExporter:
         except Exception:
             pass
         try:
-            page_text = page.evaluate(self._SCOPED_VERIFY_TEXT_JS)
+            page_text = page.evaluate(self._scoped_verify_text_js(slicer_label, verify_heading))
         except Exception as e:
             log.error(
                 f"  VERIFICATION FAILED â€” {aom_name}:\n"
@@ -1339,7 +1539,7 @@ class PowerBIExporter:
         )
         return True
 
-    def _trigger_pdf_export(self, page, fpath: str, aom_name: str) -> str:
+    def _trigger_pdf_export(self, page, fpath: str, aom_name: str, only_current_page: bool = False) -> str:
         """
         Drive the Power BI UI to export the report as PDF.
 
@@ -1348,7 +1548,8 @@ class PowerBIExporter:
 
         Flow:
           dismiss popups → click Export (toolbar) → click PDF option →
-          confirm dialog (if shown) → capture via download event OR new tab.
+          confirm dialog (if shown; check "Only export current page" first
+          when only_current_page=True) → capture via download event OR new tab.
         """
         import time as _time
 
@@ -1384,6 +1585,33 @@ class PowerBIExporter:
                         'button:has-text("PDF"), a:has-text("PDF")'
                     ).first.click(force=True, timeout=8_000)
                     page.wait_for_timeout(1_000)
+
+                    # When exporting a single page, check "Only export
+                    # current page" in the Export dialog before confirming
+                    # (unchecked by default -- leaving it unchecked would
+                    # export every page instead of just the selected one).
+                    if only_current_page:
+                        CURRENT_PAGE_CHECKBOX_SELS = [
+                            'text="Only export current page"',
+                            '[aria-label="Only export current page"]',
+                        ]
+                        checked = False
+                        for sel in CURRENT_PAGE_CHECKBOX_SELS:
+                            try:
+                                el = page.locator(sel).first
+                                el.wait_for(timeout=3_000, state='visible')
+                                el.click(force=True)
+                                log.info('  "Only export current page" checked.')
+                                checked = True
+                                break
+                            except Exception:
+                                continue
+                        if not checked:
+                            log.warning(
+                                '  Could not find/check "Only export current page" — '
+                                'export may include every page instead of just the target one.'
+                            )
+                        page.wait_for_timeout(500)
 
                     # Try confirmation dialog (multiple possible selectors)
                     CONFIRM_SELS = [
