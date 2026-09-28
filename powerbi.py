@@ -933,22 +933,67 @@ class PowerBIExporter:
                 log.info(f'  No dropdown options in 10 s (attempt {attempt + 1}).')
                 continue
 
-            # Dismiss identity dialog + overlay BEFORE each attempt
+            # Dismiss identity dialog + overlay BEFORE interacting
             self._handle_identity_prompt()
             self._dismiss_popups()
 
+            # ── USE THE SEARCH BOX ──────────────────────────────────────────
+            # The dropdown is a virtualised list; only ~11 items are rendered.
+            # Typing the AOM name in the built-in search box filters it to
+            # just the matching option — no scrolling needed.
+            # Power BI captures keyboard input into the search box whenever
+            # the dropdown is open, so page.keyboard.type() works directly.
+            search_typed = False
+            try:
+                # Try clicking the explicit search <input> first
+                sb = page.locator(
+                    'input[placeholder*="search" i], '
+                    'input[aria-label*="search" i], '
+                    '.slicerSearchInput, '
+                    'input[type="search"], '
+                    'input[type="text"]'
+                ).first
+                if sb.is_visible(timeout=500):
+                    sb.click(force=True, timeout=1_000)
+                    page.wait_for_timeout(200)
+                    # Clear existing content then type
+                    sb.fill('')
+                    page.wait_for_timeout(100)
+                    sb.type(filter_email, delay=40)
+                    search_typed = True
+                    log.info(f'  Search box: typed \'{filter_email}\'')
+            except Exception:
+                pass
+
+            if not search_typed:
+                # Fallback: just type via keyboard — Power BI routes it to the
+                # search box when the dropdown is open
+                try:
+                    page.keyboard.type(filter_email, delay=40)
+                    search_typed = True
+                    log.info(f'  Keyboard search: typed \'{filter_email}\'')
+                except Exception:
+                    pass
+
+            if search_typed:
+                # Wait for the virtualised list to re-render with filtered results
+                page.wait_for_timeout(1_500)
+
+            # Now check whether the target option is visible
             target_found = any(page.locator(s).count() > 0 for s in EMAIL_SELS)
             if not target_found:
+                # Log what IS visible for diagnostics
                 try:
                     visible = page.locator('[role="option"]').all_text_contents()
                     log.warning(
-                        f'  Dropdown opened but \'{filter_email}\' not listed.\n'
+                        f'  Target \'{filter_email}\' still not visible after search.\\n'
                         f'  Visible options ({len(visible)}): {visible[:8]}')
                 except Exception:
-                    log.warning(f'  Dropdown opened but \'{filter_email}\' not listed.')
+                    log.warning(f'  Target \'{filter_email}\' not visible after search.')
                 page.keyboard.press('Escape')
                 page.wait_for_timeout(500)
-                return False
+                # Don't give up yet — try again on next attempt (search state may reset)
+                continue
 
             log.info(f'  AOM dropdown: \'{filter_email}\' found \u2714')
 
