@@ -937,37 +937,50 @@ class PowerBIExporter:
             self._handle_identity_prompt()
             self._dismiss_popups()
 
-            # ── USE THE SEARCH BOX ──────────────────────────────────────────
-            # The dropdown is a virtualised list; only ~11 items are rendered.
-            # Typing the AOM name in the built-in search box filters it to
-            # just the matching option — no scrolling needed.
-            # Power BI captures keyboard input into the search box whenever
-            # the dropdown is open, so page.keyboard.type() works directly.
+            # ── USE THE AOM DROPDOWN'S OWN SEARCH BOX ──────────────────────
+            # IMPORTANT: Power BI has a global search bar at the top of the page
+            # (input[type="text"] / placeholder="Search"). The old code was
+            # matching that first, clicking it (which CLOSES the AOM dropdown),
+            # and then typing into global search — always "No results found".
+            #
+            # Fix: use JavaScript to find an input that lives inside the SAME
+            # DOM container as the [role="option"] elements (the dropdown panel),
+            # not the global search bar which is in the page header.
             search_typed = False
             try:
-                # Try clicking the explicit search <input> first
-                sb = page.locator(
-                    'input[placeholder*="search" i], '
-                    'input[aria-label*="search" i], '
-                    '.slicerSearchInput, '
-                    'input[type="search"], '
-                    'input[type="text"]'
-                ).first
-                if sb.is_visible(timeout=500):
+                sb_h = page.evaluate_handle("""
+                () => {
+                    // Find any visible [role="option"] (dropdown is open)
+                    const opt = document.querySelector('[role="option"]');
+                    if (!opt) return null;
+
+                    // Walk up the DOM from that option to find the panel
+                    // that contains both the options AND the search input
+                    let p = opt.parentElement;
+                    for (let i = 0; i < 10; i++) {
+                        if (!p || p === document.body) break;
+                        const inp = p.querySelector('input');
+                        if (inp) return inp;
+                        p = p.parentElement;
+                    }
+                    return null;
+                }
+                """)
+                sb = sb_h.as_element()
+                if sb:
                     sb.click(force=True, timeout=1_000)
                     page.wait_for_timeout(200)
-                    # Clear existing content then type
-                    sb.fill('')
+                    sb.fill('')          # Clear whatever is already there
                     page.wait_for_timeout(100)
                     sb.type(filter_email, delay=40)
                     search_typed = True
-                    log.info(f'  Search box: typed \'{filter_email}\'')
+                    log.info(f'  AOM search box (in-dropdown): typed \'{filter_email}\'')
             except Exception:
                 pass
 
             if not search_typed:
-                # Fallback: just type via keyboard — Power BI routes it to the
-                # search box when the dropdown is open
+                # Last resort: keyboard type — goes to whichever element is focused.
+                # Only works reliably if the dropdown's own search input is focused.
                 try:
                     page.keyboard.type(filter_email, delay=40)
                     search_typed = True
@@ -976,24 +989,21 @@ class PowerBIExporter:
                     pass
 
             if search_typed:
-                # Wait for the virtualised list to re-render with filtered results
-                page.wait_for_timeout(1_500)
+                page.wait_for_timeout(1_500)   # Let the virtualised list re-render
 
-            # Now check whether the target option is visible
+            # Check whether the target option is now visible
             target_found = any(page.locator(s).count() > 0 for s in EMAIL_SELS)
             if not target_found:
-                # Log what IS visible for diagnostics
                 try:
                     visible = page.locator('[role="option"]').all_text_contents()
                     log.warning(
-                        f'  Target \'{filter_email}\' still not visible after search.\\n'
+                        f'  Target \'{filter_email}\' still not visible after search.\n'
                         f'  Visible options ({len(visible)}): {visible[:8]}')
                 except Exception:
                     log.warning(f'  Target \'{filter_email}\' not visible after search.')
                 page.keyboard.press('Escape')
                 page.wait_for_timeout(500)
-                # Don't give up yet — try again on next attempt (search state may reset)
-                continue
+                continue   # Try next attempt
 
             log.info(f'  AOM dropdown: \'{filter_email}\' found \u2714')
 
