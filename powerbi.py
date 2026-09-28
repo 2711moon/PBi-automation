@@ -1097,14 +1097,14 @@ class PowerBIExporter:
                     page.wait_for_timeout(200)
                     sb.type(' ', delay=10) # Trigger change event
                     page.keyboard.press('Backspace')
-                    page.keyboard.press('Enter')
+                    # DO NOT press 'Enter' here — it submits/closes the dropdown in Power BI!
                     search_typed = True
                     log.info(f"  Search box: typed '{filter_email}'")
             except Exception as e:
                 log.debug(f"  Search box fill failed: {e}")
 
             if search_typed:
-                page.wait_for_timeout(2_000)  # Wait for virtual list to update
+                page.wait_for_timeout(4_000)  # Wait for virtual list to update (increased wait)
 
             if _check_target_visible():
                 if _click_target():
