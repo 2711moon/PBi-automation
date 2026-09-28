@@ -35,23 +35,26 @@ TARGET_GROUPS = [
         "value_column":    "AOM",
         "delivery_column": "AutoEmail",
         "reports": [
-            {
-                "workspace":     "Franchise Operations",
-                "name":          "EBO Report -8 Day Wise Sale",
-                "url":           "https://app.powerbi.com/groups/81d975dc-05d1-4d4e-b805-f5886368e433/reports/63ea6b56-c09f-410d-a7ce-31381c174223/f23a123c62d0a018a02e",
-                "filter_column": "AOM",
-                "date_from":     None,
-                "date_to":       None,
-                "page":          None,
-            },
+            # Temporarily disabled -- testing Report 2's new date/page
+            # features in isolation first, per user's plan. Re-enable once
+            # confirmed working, then run with both reports together.
+            # {
+            #     "workspace":     "Franchise Operations",
+            #     "name":          "EBO Report -8 Day Wise Sale",
+            #     "url":           "https://app.powerbi.com/groups/81d975dc-05d1-4d4e-b805-f5886368e433/reports/63ea6b56-c09f-410d-a7ce-31381c174223/f23a123c62d0a018a02e",
+            #     "filter_column": "AOM",
+            #     "date_from":     None,
+            #     "date_to":       None,
+            #     "page":          None,
+            # },
             {
                 "workspace":     "Franchise Operations",
                 "name":          "EBO Report -5 DSR",
                 "url":           "https://app.powerbi.com/groups/81d975dc-05d1-4d4e-b805-f5886368e433/reports/243700e6-fe17-4947-979e-f930fb07bb3e/ce3648bb53e8b9a3ea91",
                 "filter_column": "AOM",
-                "date_from":     None,
-                "date_to":       None,
-                "page":          None,
+                "date_from":     "2026-09-01", #Expects the input in the form of year, month, and date. It will output in the format PowerBI currently expects, which is month, date, and year. 
+                "date_to":       "2026-09-30",
+                "page":          "Overall KPI Report",
             },
         ],
     },

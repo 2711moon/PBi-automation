@@ -366,16 +366,34 @@ class PowerBIExporter:
     def _discover_report_url(self, workspace: str, report_name: str,
                              known_url: str = None) -> str:
         """
-        Navigate through the Power BI workspace to find the report and
-        return the base report URL.
+        Return the base report URL.
 
-        Always uses workspace navigation so Power BI properly establishes
-        a session and loads all report visuals before returning.
+        If `known_url` is given, navigate straight to it -- no workspace
+        detour needed once we're already logged in. (The sidebar-based
+        workspace lookup below is fragile once the browser is deep inside
+        a different report's view -- e.g. after processing 41 targets on a
+        prior report, the Filters pane and accumulated UI state mean the
+        sidebar workspace link may no longer be reachable the way it was
+        right after login. Every report in this codebase's config has a
+        known `url`, so this path is what actually runs in practice; the
+        sidebar search below only serves as a fallback for a report_cfg
+        that omits `url`.)
         """
         page = self._page
 
+        if known_url:
+            self._handle_identity_prompt()
+            self._dismiss_popups()
+            log.info(f'  Navigating to report via known URL...')
+            page.goto(known_url, timeout=NAV_TIMEOUT, wait_until="domcontentloaded")
+            page.wait_for_timeout(8_000)   # wait for all report visuals to initialise
+            self._handle_identity_prompt()
+            report_url = page.url.split("?")[0].rstrip("/")
+            log.info(f'  Report URL: {report_url}')
+            return report_url
+
         log.info(f'  Looking for workspace "{workspace}"...')
-        
+
         # Clear any identity prompts or welcome dialogs before looking
         self._handle_identity_prompt()
         self._dismiss_popups()
@@ -432,18 +450,8 @@ class PowerBIExporter:
         self._handle_identity_prompt()  # dismiss verify-identity dialog if it appears
         self._dismiss_popups()
 
-        # Session is now established via workspace navigation.
-        # If the report URL is known from config, use it directly
-        # (virtual-scroll list in workspace may not show all reports in DOM).
-        if known_url:
-            log.info(f'  Session established. Navigating to report via known URL...')
-            page.goto(known_url, timeout=NAV_TIMEOUT, wait_until="domcontentloaded")
-            page.wait_for_timeout(8_000)   # wait for all report visuals to initialise
-            self._handle_identity_prompt()
-            report_url = page.url.split("?")[0].rstrip("/")
-            log.info(f'  Report URL: {report_url}')
-            return report_url
-
+        # (known_url case already returned early above -- this fallback path
+        # only runs when report_cfg omits `url` entirely.)
         log.info(f'  Looking for report "{report_name}"...')
 
         report_href = None
