@@ -31,6 +31,50 @@ class PowerBIExporter:
     then exports a filtered PDF for each AOM.
     """
 
+    # JS used to extract "verifiable" page text for the conflict/presence checks.
+    # Scoped to the "AOM Wise Sales Summary" table when present, because other
+    # tables in the report (Cluster-wise, Zone/OPS Head-wise) show staff names
+    # (Cluster Manager, Operation Head, ...) that can coincidentally match a
+    # DIFFERENT AOM's name and cause a false "data conflict" even though the
+    # actual AOM-level filter is correct. Falls back to the whole page (minus
+    # slicer DOM, which stores every option's text even while closed) if that
+    # table heading can't be found.
+    _SCOPED_VERIFY_TEXT_JS = r"""
+    () => {
+        // Clone the body so we don't mutate the live DOM
+        let clone = document.body.cloneNode(true);
+        // Remove all slicer-related elements — they store all option
+        // names in the DOM even when the dropdown is closed, which
+        // would cause false "conflict" detections.
+        clone.querySelectorAll(
+            '.slicer-container, .visual-slicer, ' +
+            '[class*="slicer"], [class*="Slicer"], ' +
+            '.slicerDropdownMenu, [role="listbox"], ' +
+            '[aria-label*="slicer"], [aria-label*="Slicer"]'
+        ).forEach(el => el.remove());
+
+        // Try to scope to the "AOM Wise Sales Summary" table specifically —
+        // that's the only section that reflects the actual AOM-level filter.
+        const leafNodes = Array.from(clone.querySelectorAll('*')).filter(
+            el => el.children.length === 0
+        );
+        const heading = leafNodes.find(
+            el => /AOM\s*Wise\s*Sales\s*Summary/i.test(el.textContent || '')
+        );
+        if (heading) {
+            let container = heading;
+            for (let i = 0; i < 6 && container.parentElement; i++) {
+                container = container.parentElement;
+                if (container.querySelectorAll('table, [role="grid"], [role="row"]').length > 0) {
+                    break;
+                }
+            }
+            return container.innerText;
+        }
+        return clone.innerText;
+    }
+    """
+
     def __init__(self, username: str, password: str):
         self.username     = username
         self.password     = password
@@ -497,8 +541,9 @@ class PowerBIExporter:
             try:
                 page.keyboard.press("Escape")
                 page.wait_for_timeout(200)
-                page_text = page.evaluate("() => document.body.innerText")
-                conflicts = [e for e in (other_emails or []) if e in page_text]
+                page_text = page.evaluate(self._SCOPED_VERIFY_TEXT_JS)
+                page_text_lower = page_text.lower()
+                conflicts = [e for e in (other_emails or []) if e.lower() in page_text_lower]
                 if not conflicts:
                     log.info(
                         f"  Data looks clean after {elapsed_sec}s "
@@ -1251,23 +1296,7 @@ class PowerBIExporter:
         except Exception:
             pass
         try:
-            page_text = page.evaluate("""
-                () => {
-                    // Clone the body so we don't mutate the live DOM
-                    let clone = document.body.cloneNode(true);
-                    // Remove all slicer-related elements â€” they store all option
-                    // names in the DOM even when the dropdown is closed, which
-                    // would cause false "conflict" detections.
-                    clone.querySelectorAll(
-                        '.slicer-container, .visual-slicer, ' +
-                        '[class*="slicer"], [class*="Slicer"], ' +
-                        '.slicerDropdownMenu, [role="listbox"], ' +
-                        '[aria-label*="slicer"], [aria-label*="Slicer"]'
-                    ).forEach(el => el.remove());
-                    return clone.innerText;
-                }
-            """)
-
+            page_text = page.evaluate(self._SCOPED_VERIFY_TEXT_JS)
         except Exception as e:
             log.error(
                 f"  VERIFICATION FAILED â€” {aom_name}:\n"
