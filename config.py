@@ -24,10 +24,11 @@ REPORTS = [
     }
     # To add more reports, simply copy the dictionary above:
     # {
-    #     "workspace":     "Another Workspace",
-    #     "name":          "Another Report",
-    #     "filter_table":  "Store Master",
-    #     "filter_column": "AOM Mail Id",
+        "workspace":     "Franchise Operations",
+         "name":          "EBO Report -5 DSR",
+          "url": "https://app.powerbi.com/groups/81d975dc-05d1-4d4e-b805-f5886368e433/reports/243700e6-fe17-4947-979e-f930fb07bb3e/ce3648bb53e8b9a3ea91",
+         "filter_table":  "Store Master",
+         "filter_column": "AOM",
     # }
 ]
 
