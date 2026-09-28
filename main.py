@@ -298,7 +298,10 @@ def main():
     pbi_email, pbi_password = prompt_credentials()
 
     aoms  = load_aoms()
-    today = date.today().strftime("%d-%b-%Y")
+    # Use yesterday's date for the report
+    from datetime import timedelta
+    target_date = (date.today() - timedelta(days=1)).strftime("%d-%b-%Y")
+    
     log.info(f"Loaded {len(aoms)} AOM(s) from Store Master.xlsx")
     for a in aoms:
         log.info(f"  - {a['name']} | filter: {a['filter_name']} | send to: {a['delivery_email']}")
@@ -316,7 +319,7 @@ def main():
         log.info("\n" + "=" * 55)
         log.info("  PHASE 1 — Processing all AOMs")
         log.info("=" * 55)
-        p1_ok, p1_fail = run_phase(exporter, mailer, aoms, aoms, today, phase_num=1)
+        p1_ok, p1_fail = run_phase(exporter, mailer, aoms, aoms, target_date, phase_num=1)
         print_phase_summary(1, p1_ok, p1_fail)
 
         # ── Phase 2: retry Phase 1 failures (ask permission) ─────────────────────
@@ -330,7 +333,7 @@ def main():
                 log.info("=" * 55)
                 log.info("  Re-logging in for a fresh session before Phase 2...")
                 exporter.relogin()
-                p2_ok, p2_fail = run_phase(exporter, mailer, retry_aoms, aoms, today, phase_num=2)
+                p2_ok, p2_fail = run_phase(exporter, mailer, retry_aoms, aoms, target_date, phase_num=2)
                 print_phase_summary(2, p2_ok, p2_fail)
 
                 # ── Phase 3: retry Phase 2 failures (automatic) ─────────────────
@@ -341,7 +344,7 @@ def main():
                     log.info("=" * 55)
                     log.info("  Re-logging in for a fresh session before Phase 3...")
                     exporter.relogin()
-                    p3_ok, p3_fail = run_phase(exporter, mailer, retry_aoms, aoms, today, phase_num=3)
+                    p3_ok, p3_fail = run_phase(exporter, mailer, retry_aoms, aoms, target_date, phase_num=3)
                     print_phase_summary(3, p3_ok, p3_fail)
                 else:
                     log.info("  Phase 2 achieved 100%% success — Phase 3 not needed.")
