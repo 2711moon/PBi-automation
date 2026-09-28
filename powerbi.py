@@ -41,6 +41,7 @@ class PowerBIExporter:
         self._report_urls  = {}   # cache: (workspace, report_name) -> url
         self._slicer_cache    = {}   # cache: report_name -> slicer index that contains AOM names
         self._aom_trigger_idx = None  # cached index of the AOM slicer in the trigger list
+        self._loaded_report_url = None  # url of the report currently loaded in the page (None = not loaded yet)
 
     # -- Context manager -------------------------------------------------------
 
@@ -217,18 +218,26 @@ class PowerBIExporter:
 
     # -- Identity verification prompt ------------------------------------------
 
-    def _handle_identity_prompt(self) -> None:
+    def _handle_identity_prompt(self, quick: bool = False) -> None:
         """
         Power BI shows 'You need to verify your identity' dialog at various points.
-        Always click 'Continue'. Loops up to 5 times to catch re-appearances.
+        Always click 'Continue'.
+
+        quick=False (default): loops up to 5 times with a 3s wait each, to
+        robustly catch it appearing/re-appearing after a navigation/reload.
+        quick=True: a single, cheap ~300ms check — use this in hot loops
+        (e.g. the scroll-fallback loop) where we call this defensively on
+        every iteration and can't afford a 3s no-op wait each time.
         """
-        for attempt in range(1, 6):
+        max_attempts = 1 if quick else 5
+        wait_timeout = 300 if quick else 3_000
+        for attempt in range(1, max_attempts + 1):
             try:
                 btn = self._page.locator(
                     'button:has-text("Continue"), '
                     '[aria-label="Continue"]'
                 ).first
-                btn.wait_for(timeout=3_000, state="visible")
+                btn.wait_for(timeout=wait_timeout, state="visible")
                 btn.click()
                 log.info(f"  Identity prompt dismissed (attempt {attempt}).")
                 self._page.wait_for_timeout(1_500)
@@ -276,6 +285,7 @@ class PowerBIExporter:
         # Clear cached URLs so workspace navigation runs again
         self._report_urls.clear()
         self._aom_trigger_idx = None
+        self._loaded_report_url = None
         page = self._page
         # Navigate to Microsoft logout
         try:
@@ -413,9 +423,12 @@ class PowerBIExporter:
         """
         For this AOM:
           1. Discover report URL (cached; uses known URL from config if set)
-          2. Navigate to base report URL (clean state, 4s wait)
-          3. Open Filters pane
-          4. Apply filter via slicer → Page 1 fallback → Filters pane card
+          2. Navigate to the report ONLY if not already loaded (first AOM for
+             this report, or after a reload) — subsequent AOMs reuse the same
+             live page and just swap the AOM slicer selection.
+          3. Open Filters pane (once per report load)
+          4. Apply filter via slicer (3-attempt cycle, reload only on the 3rd)
+             -> Filters pane card fallback
           5. Smart-wait until conflicting AOM data disappears
           6. Verify only the expected AOM data is on screen
           7. Export as PDF
@@ -442,36 +455,35 @@ class PowerBIExporter:
 
         page = self._page
 
-        # Step 2: Navigate to base report URL (flush any residual filter)
-        log.info(f"  Navigating to base report URL (clean state)...")
-        page.goto(report_url, timeout=NAV_TIMEOUT, wait_until="domcontentloaded")
-        page.wait_for_timeout(4_000)
-        self._handle_identity_prompt()
-
-        # Step 3: Open the Filters pane
-        log.info(f"  Opening Filters pane...")
-        self._open_filters_pane()
-        page.wait_for_timeout(1_500)
-
-        # Step 4: Set filter via UI
-        log.info(f"  Setting filter: {filter_column} = {filter_email}")
-        if not self._apply_filter_via_pane(filter_email, filter_column):
-            # ── Inline retry: reload page and try once more ───────────────
-            log.warning(f"  Filter failed on first attempt. Reloading and retrying...")
-            page.wait_for_timeout(3_000)
+        # Step 2 & 3: Navigate + open Filters pane only if this report isn't
+        # already the one loaded in the page (first AOM for it, or we just
+        # switched reports). No per-AOM reload — subsequent AOMs stay on the
+        # same live page and just swap the AOM slicer selection.
+        if self._loaded_report_url != report_url:
+            log.info(f"  Navigating to report (clean state)...")
             page.goto(report_url, timeout=NAV_TIMEOUT, wait_until="domcontentloaded")
-            page.wait_for_timeout(5_000)
+            page.wait_for_timeout(4_000)
+            # Identity prompt can appear twice in a row right after a reload.
             self._handle_identity_prompt()
+            self._handle_identity_prompt()
+
+            log.info(f"  Opening Filters pane...")
             self._open_filters_pane()
             page.wait_for_timeout(1_500)
-            if not self._apply_filter_via_pane(filter_email, filter_column):
-                log.error(
-                    f"  FILTER APPLY FAILED \u2014 {aom_name}:\n"
-                    f"  Could not set '{filter_column}' = '{filter_email}' in UI.\n"
-                    f"  This report will NOT be attached."
-                )
-                self._debug_screenshot(page, f"{aom_name}_{report_name}")
-                return None
+
+            self._loaded_report_url = report_url
+
+        # Step 4: Set filter via UI (owns its own 3-attempt cycle, reloading
+        # only if attempts 1 & 2 both fail).
+        log.info(f"  Setting filter: {filter_column} = {filter_email}")
+        if not self._apply_filter_via_pane(filter_email, filter_column, report_url):
+            log.error(
+                f"  FILTER APPLY FAILED \u2014 {aom_name}:\n"
+                f"  Could not set '{filter_column}' = '{filter_email}' in UI.\n"
+                f"  This report will NOT be attached."
+            )
+            self._debug_screenshot(page, f"{aom_name}_{report_name}")
+            return None
 
         # Step 5: Smart wait – poll until other AOM emails are gone from the page
         MAX_WAIT_SEC  = 90
@@ -773,137 +785,14 @@ class PowerBIExporter:
 
     def _try_slicer(self, filter_email: str) -> bool:
         """
-        Locate the AOM slicer by its title text 'AOM', clear any previous
-        selection via the eraser button, then open the dropdown and select
-        the target name.
-
-        Click strategy: locator.click(force=True) generates CDP-level trusted
-        events. Combined with keyboard shortcuts (Enter/Space), this is the
-        most reliable way to open Power BI's Angular dropdown slicer.
-        Active wait (wait_for_selector, 10 s) instead of fixed sleep.
-        Up to 5 attempts. No generic slicer hunt.
-        """
-        page = self._page
-
-        # Force-unhide visuals (including display:none)
-        try:
-            page.evaluate("""
-            () => {
-                document.querySelectorAll(
-                    '.visual-container, .visualContainer, [class*=\"visual\"]'
-                ).forEach(v => {
-                    v.style.setProperty('visibility',     'visible', 'important');
-                    v.style.setProperty('opacity',        '1',       'important');
-                    v.style.setProperty('pointer-events', 'auto',    'important');
-                    if (getComputedStyle(v).display === 'none')
-                        v.style.setProperty('display', 'block', 'important');
-                });
-            }""")
-            page.wait_for_timeout(500)
-        except Exception:
-            pass
-
-        # JS: find the AOM slicer trigger (prefer .slicerDropdownMenu)
-        FIND_TRIGGER_JS = r"""
-        () => {
-            const walker = document.createTreeWalker(
-                document.body, NodeFilter.SHOW_TEXT, null
-            );
-            let node;
-            while ((node = walker.nextNode())) {
-                if (node.textContent.trim() !== 'AOM') continue;
-                let el = node.parentElement;
-                for (let i = 0; i < 10; i++) {
-                    if (!el || el === document.body) break;
-                    const menu = el.querySelector('.slicerDropdownMenu');
-                    if (menu) return menu;
-                    const combo = el.querySelector(
-                        '[role="combobox"], [aria-haspopup="listbox"], [aria-haspopup="true"]'
-                    );
-                    if (combo) return combo;
-                    el = el.parentElement;
-                }
-            }
-            return null;
-        }
-        """
-
-        # JS: find eraser/clear button near AOM text
-        FIND_ERASER_JS = r"""
-        () => {
-            const walker = document.createTreeWalker(
-                document.body, NodeFilter.SHOW_TEXT, null
-            );
-            let node;
-            while ((node = walker.nextNode())) {
-                if (node.textContent.trim() !== 'AOM') continue;
-                let el = node.parentElement;
-                for (let i = 0; i < 8; i++) {
-                    if (!el || el === document.body) break;
-                    const e = el.querySelector(
-                        '[aria-label*="clear" i], [aria-label*="Clear" i], '
-                        + '[aria-label*="eraser" i], [title*="clear" i], '
-                        + '.slicerDeleteButton, [class*="clearButton"]'
-                    );
-                    if (e) return e;
-                    el = el.parentElement;
-                }
-            }
-            return null;
-        }
-        """
-
-        OPTION_SELS = '[role="option"], [role="listbox"] li, div[role="listbox"] span'
-        EMAIL_SELS  = [
-            f'[role="option"]:has-text("{filter_email}")',
-            f'[role="listbox"] li:has-text("{filter_email}")',
-            f'div[role="listbox"] span:has-text("{filter_email}")',
-        ]
-
-        def _unhide_chain(elem_h):
-            try:
-                page.evaluate(r"""(node) => {
-                    let c = node;
-                    while (c && c !== document.body) {
-                        c.style.setProperty('visibility',     'visible', 'important');
-                        c.style.setProperty('opacity',        '1',       'important');
-                        c.style.setProperty('pointer-events', 'auto',    'important');
-                        if (getComputedStyle(c).display === 'none')
-                            c.style.setProperty('display', 'block', 'important');
-                        c = c.parentElement;
-                    }
-                }""", elem_h)
-            except Exception:
-                pass
-
-        def _open_dropdown(elem_h):
-            """Unhide chain, focus, keyboard, then force-click."""
-            _unhide_chain(elem_h)
-            page.wait_for_timeout(200)
-            try:
-                elem_h.focus()
-                page.wait_for_timeout(200)
-            except Exception:
-                pass
-            for key in ['Enter', 'Space', 'ArrowDown']:
-                try:
-                    page.keyboard.press(key)
-                    page.wait_for_timeout(250)
-                except Exception:
-                    pass
-            try:
-                elem_h.click(force=True, timeout=3_000)
-            except Exception:
-                pass
-
-    def _try_slicer(self, filter_email: str) -> bool:
-        """
-        Attempts to select the given AOM name in the slicer dropdown.
-        Implements a Search + Scroll Fallback strategy:
+        Attempts to select the given AOM name in the slicer dropdown, ONE time.
+        Implements a Search + Scroll Fallback strategy within this single attempt:
         1. Types the name in the internal search box.
-        2. If not found, scrolls down the list sequentially looking for it.
-        Loops 2 times internally. If it fails, returns False, which triggers
-        a full page reload (Attempt 3) higher up in the execution flow.
+        2. If not found, scrolls down the list sequentially looking for it,
+           stopping early once the visible names have passed the target
+           alphabetically (the list is sorted A-Z).
+        Returns True on success, False on failure. Retrying (in place, or via
+        a page reload) is the caller's responsibility (_apply_filter_via_pane).
         """
         page = self._page
         
@@ -980,30 +869,74 @@ class PowerBIExporter:
             except Exception:
                 pass
 
+        def _is_dropdown_open() -> bool:
+            try:
+                return page.locator(OPTION_SELS).count() > 0
+            except Exception:
+                return False
+
         def _open_dropdown(elem_h):
-            """Unhide chain, focus, keyboard, then force-click."""
+            """
+            Open the AOM dropdown. IMPORTANT: this trigger toggles open/closed,
+            so we try ONE action at a time and check whether options actually
+            appeared before trying the next — firing multiple toggle actions
+            back-to-back (click, then Enter, then Space, ...) risks opening
+            and immediately re-closing it, which was causing intermittent
+            failures where the dropdown silently ended up closed.
+            """
             _unhide_chain(elem_h)
             page.wait_for_timeout(200)
-            try:
-                elem_h.focus()
-                page.wait_for_timeout(200)
-            except Exception:
-                pass
-            for key in ['Enter', 'Space', 'ArrowDown']:
-                try:
-                    page.keyboard.press(key)
-                    page.wait_for_timeout(250)
-                except Exception:
-                    pass
+
+            # Attempt 1: plain click.
             try:
                 elem_h.click(force=True, timeout=2_000)
+            except Exception:
+                pass
+            page.wait_for_timeout(500)
+            if _is_dropdown_open():
+                return
+
+            # Attempt 2: focus + Enter (only if click didn't open it).
+            try:
+                elem_h.focus()
+                page.wait_for_timeout(150)
+                page.keyboard.press('Enter')
+                page.wait_for_timeout(500)
+            except Exception:
+                pass
+            if _is_dropdown_open():
+                return
+
+            # Attempt 3: Space (last resort — still only fired if still closed).
+            try:
+                page.keyboard.press('Space')
+                page.wait_for_timeout(500)
             except Exception:
                 pass
 
         def _check_target_visible() -> bool:
             return any(page.locator(s).count() > 0 for s in EMAIL_SELS)
 
+        def _get_top_visible_option_text() -> str:
+            """First (topmost) currently-rendered option's text, used for the
+            alphabetical scroll early-stop (the list is sorted A-Z)."""
+            try:
+                return page.evaluate(f"""
+                () => {{
+                    const els = document.querySelectorAll('{OPTION_SELS}');
+                    for (const e of els) {{
+                        const t = (e.innerText || e.textContent || '').trim();
+                        if (t) return t;
+                    }}
+                    return '';
+                }}
+                """) or ''
+            except Exception:
+                return ''
+
         def _click_target() -> bool:
+            # Single click only \u2014 Power BI slicer options are checkbox-style;
+            # a second click risks toggling the just-made selection back off.
             for sel in EMAIL_SELS:
                 try:
                     loc = page.locator(sel)
@@ -1011,11 +944,6 @@ class PowerBIExporter:
                         opt = loc.first
                         self._handle_identity_prompt()
                         opt.evaluate('el => el.click()')   # JS click (bypasses overlay)
-                        page.wait_for_timeout(500)
-                        try:
-                            opt.click(force=True, timeout=1_000)
-                        except Exception:
-                            pass
                         page.wait_for_timeout(1_500)
                         log.info(f'  Selected \'{filter_email}\' in AOM slicer \u2713')
                         page.keyboard.press('Escape')
@@ -1025,164 +953,215 @@ class PowerBIExporter:
                     pass
             return False
 
-        # Internal loop for Attempt 1 and Attempt 2 (Attempt 3 is via page reload)
-        for attempt in range(2):
-            log.info(f"  AOM slicer: attempt {attempt + 1}/2 for '{filter_email}'...")
-            
-            self._handle_identity_prompt()
-            self._dismiss_popups()
+        log.info(f"  AOM slicer: attempt for '{filter_email}'...")
 
-            # Find the slicer trigger (the dropdown caret)
-            try:
-                h = page.evaluate_handle(FIND_TRIGGER_JS)
-                elem = h.as_element()
-            except Exception:
-                elem = None
+        self._handle_identity_prompt()
+        self._dismiss_popups()
 
-            if not elem:
-                log.warning("  AOM slicer trigger not found in DOM.")
-                return False
+        # Find the slicer trigger (the dropdown caret)
+        try:
+            h = page.evaluate_handle(FIND_TRIGGER_JS)
+            elem = h.as_element()
+        except Exception:
+            elem = None
 
-            # Clear eraser on the first try if it's visible
-            if attempt == 0:
-                try:
-                    elem.hover(timeout=1_000)
-                    page.wait_for_timeout(300)
-                    eh = page.evaluate_handle(FIND_ERASER_JS)
-                    eraser = eh.as_element()
-                    if eraser:
-                        _unhide_chain(eraser)
-                        eraser.click(force=True, timeout=1_000)
-                        page.wait_for_timeout(800)
-                        log.info('  Eraser clicked — previous selection cleared.')
-                except Exception:
-                    pass
+        if not elem:
+            log.warning("  AOM slicer trigger not found in DOM.")
+            return False
 
-            # Open dropdown
-            _open_dropdown(elem)
+        # Clear eraser if a previous selection is visible
+        try:
+            elem.hover(timeout=1_000)
+            page.wait_for_timeout(300)
+            eh = page.evaluate_handle(FIND_ERASER_JS)
+            eraser = eh.as_element()
+            if eraser:
+                _unhide_chain(eraser)
+                eraser.click(force=True, timeout=1_000)
+                page.wait_for_timeout(800)
+                log.info('  Eraser clicked — previous selection cleared.')
+        except Exception:
+            pass
 
-            try:
-                page.wait_for_selector(OPTION_SELS, timeout=8_000, state='attached')
-            except Exception:
-                log.info(f"  No dropdown options appeared (attempt {attempt + 1}).")
-                page.keyboard.press('Escape')
-                page.wait_for_timeout(1_000)
-                continue
+        # Open dropdown
+        _open_dropdown(elem)
 
-            self._handle_identity_prompt()
-            
-            # ── 1. THE SEARCH STEP ──
-            search_typed = False
-            try:
-                # Target the search input specifically inside the opened dropdown container
-                sb_h = page.evaluate_handle("""
-                () => {
-                    const opt = document.querySelector('[role="option"]');
-                    if (!opt) return null;
-                    let p = opt.parentElement;
-                    for (let i = 0; i < 10; i++) {
-                        if (!p || p === document.body) break;
-                        const inp = p.querySelector('input');
-                        if (inp) return inp;
-                        p = p.parentElement;
-                    }
-                    return null;
-                }
-                """)
-                sb = sb_h.as_element()
-                if sb:
-                    sb.click(force=True, timeout=1_000)
-                    page.wait_for_timeout(200)
-                    sb.fill(filter_email)  # Force fill value
-                    page.wait_for_timeout(200)
-                    sb.type(' ', delay=10) # Trigger change event
-                    page.keyboard.press('Backspace')
-                    # DO NOT press 'Enter' here — it submits/closes the dropdown in Power BI!
-                    search_typed = True
-                    log.info(f"  Search box: typed '{filter_email}'")
-            except Exception as e:
-                log.debug(f"  Search box fill failed: {e}")
-
-            if search_typed:
-                page.wait_for_timeout(4_000)  # Wait for virtual list to update (increased wait)
-
-            if _check_target_visible():
-                if _click_target():
-                    return True
-                else:
-                    log.warning("  Target was visible but click failed.")
-            else:
-                log.info(f"  Target '{filter_email}' not immediately visible. Falling back to SCROLLING...")
-                
-                # ── 2. THE SCROLL FALLBACK STEP ──
-                # If the target is further down the virtualized list, we scroll to find it.
-                # We click inside the dropdown list container and press PageDown.
-                scroll_success = False
-                try:
-                    # Focus the list container so keystrokes scroll it
-                    page.evaluate("""
-                    () => {
-                        const opt = document.querySelector('[role="option"]');
-                        if (opt) {
-                            // Focus the scrollable viewport
-                            let viewport = opt.closest('.cdk-virtual-scroll-viewport, .scrollable-content, [role="listbox"]');
-                            if (viewport) {
-                                viewport.focus();
-                                viewport.click();
-                            } else {
-                                opt.click(); // at least focus the option
-                            }
-                        }
-                    }
-                    """)
-                    
-                    max_scrolls = 15
-                    for s in range(max_scrolls):
-                        if _check_target_visible():
-                            log.info(f"  Found '{filter_email}' after {s} scrolls!")
-                            scroll_success = True
-                            break
-                        
-                        # Press PageDown to scroll the virtual list
-                        page.keyboard.press('PageDown')
-                        page.wait_for_timeout(600)  # wait for new items to render
-                        self._handle_identity_prompt() # just in case
-                        
-                    if not scroll_success:
-                        log.warning(f"  Could not find '{filter_email}' even after scrolling.")
-                except Exception as e:
-                    log.warning(f"  Scroll fallback failed: {e}")
-
-                if scroll_success and _click_target():
-                    return True
-
-            # If we reach here, Attempt N failed. Close dropdown and retry.
+        try:
+            page.wait_for_selector(OPTION_SELS, timeout=8_000, state='attached')
+        except Exception:
+            log.info("  No dropdown options appeared.")
             page.keyboard.press('Escape')
             page.wait_for_timeout(1_000)
+            return False
 
-        log.warning(f"  AOM slicer: attempts 1 & 2 failed for '{filter_email}'. Initiating hard reset...")
+        self._handle_identity_prompt()
+
+        # ── 1. THE SEARCH STEP ──
+        search_typed = False
+        try:
+            # Target the search input specifically inside the opened dropdown container
+            sb_h = page.evaluate_handle("""
+            () => {
+                const opt = document.querySelector('[role="option"]');
+                if (!opt) return null;
+                let p = opt.parentElement;
+                for (let i = 0; i < 10; i++) {
+                    if (!p || p === document.body) break;
+                    const inp = p.querySelector('input');
+                    if (inp) return inp;
+                    p = p.parentElement;
+                }
+                return null;
+            }
+            """)
+            sb = sb_h.as_element()
+            if sb:
+                sb.click(force=True, timeout=1_000)
+                page.wait_for_timeout(200)
+                sb.fill(filter_email)  # Force fill value
+                page.wait_for_timeout(200)
+                sb.type(' ', delay=10) # Trigger change event
+                page.keyboard.press('Backspace')
+                # DO NOT press 'Enter' here — it submits/closes the dropdown in Power BI!
+                search_typed = True
+                log.info(f"  Search box: typed '{filter_email}'")
+            else:
+                n_opts = page.locator(OPTION_SELS).count()
+                log.warning(
+                    f"  Search box not found in dropdown (options currently visible: {n_opts})."
+                )
+        except Exception as e:
+            log.warning(f"  Search box fill failed: {e}")
+
+        if search_typed:
+            page.wait_for_timeout(4_000)  # Wait for virtual list to update (increased wait)
+
+        if _check_target_visible():
+            if _click_target():
+                return True
+            log.warning("  Target was visible but click failed.")
+            page.keyboard.press('Escape')
+            page.wait_for_timeout(1_000)
+            return False
+
+        log.info(f"  Target '{filter_email}' not immediately visible. Falling back to SCROLLING...")
+
+        # ── 2. THE SCROLL FALLBACK STEP ──
+        # If the target is further down the virtualized list, we scroll to find it.
+        # We click inside the dropdown list container and press PageDown, stopping
+        # early once the visible names have passed the target alphabetically
+        # (the list is sorted A-Z, so there's no point scrolling further).
+        scroll_success = False
+        target_letter = filter_email.strip()[0].lower() if filter_email.strip() else ''
+        try:
+            # Focus the list container so keystrokes scroll it
+            page.evaluate("""
+            () => {
+                const opt = document.querySelector('[role="option"]');
+                if (opt) {
+                    // Focus the scrollable viewport WITHOUT clicking any option
+                    // (clicking an option here would accidentally select the
+                    // wrong AOM — we only want keyboard focus for PageDown).
+                    let viewport = opt.closest('.cdk-virtual-scroll-viewport, .scrollable-content, [role="listbox"]');
+                    if (viewport && viewport.focus) {
+                        viewport.setAttribute('tabindex', viewport.getAttribute('tabindex') || '0');
+                        viewport.focus();
+                    } else if (opt.focus) {
+                        opt.focus(); // focus only, never click
+                    }
+                }
+            }
+            """)
+
+            max_scrolls = 15
+            for s in range(max_scrolls):
+                if _check_target_visible():
+                    log.info(f"  Found '{filter_email}' after {s} scrolls!")
+                    scroll_success = True
+                    break
+
+                # Alphabetical early-stop: if the topmost visible name has
+                # already moved past the target's first letter, stop scrolling.
+                top_text = _get_top_visible_option_text()
+                if target_letter and top_text:
+                    top_letter = top_text.strip()[0].lower()
+                    if top_letter > target_letter:
+                        log.info(
+                            f"  Visible list has passed '{filter_email}' alphabetically "
+                            f"(now at '{top_text}') — stopping scroll early."
+                        )
+                        break
+
+                # Press PageDown to scroll the virtual list
+                page.keyboard.press('PageDown')
+                page.wait_for_timeout(600)  # wait for new items to render
+                self._handle_identity_prompt(quick=True) # just in case, cheap check
+
+            if not scroll_success:
+                # Diagnostics: dump what was actually visible when we gave up,
+                # so a future failure is debuggable from the log instead of
+                # requiring another guess-and-check round.
+                try:
+                    sample = page.evaluate(f"""
+                    () => Array.from(document.querySelectorAll('{OPTION_SELS}'))
+                        .slice(0, 5)
+                        .map(e => (e.innerText || e.textContent || '').trim())
+                    """)
+                except Exception:
+                    sample = []
+                log.warning(
+                    f"  Could not find '{filter_email}' even after scrolling. "
+                    f"Currently visible (sample): {sample}"
+                )
+        except Exception as e:
+            log.warning(f"  Scroll fallback failed: {e}")
+
+        if scroll_success and _click_target():
+            return True
+
+        page.keyboard.press('Escape')
+        page.wait_for_timeout(1_000)
         return False
 
-    def _apply_filter_via_pane(self, filter_email: str, filter_column: str) -> bool:
+    def _apply_filter_via_pane(self, filter_email: str, filter_column: str, report_url: str = None) -> bool:
         """
         Set the AOM filter through the Power BI UI (slicer on current page only).
         The AOM slicer is always on the first/current page — no page-switching needed.
-        Falls back to the Filters pane card if the slicer attempt fails.
+
+        Runs the full 3-attempt cycle:
+          - Attempt 1: reset slicers, try the AOM slicer (search + scroll fallback).
+          - Attempt 2: same, in place, no reload.
+          - Attempt 3: only if 1 & 2 both failed — reload the report page once,
+            handle the identity prompt, re-open the Filters pane, reset slicers
+            again, then try the AOM slicer one last time.
+        Falls back to the Filters pane card if all 3 slicer attempts fail.
         """
         page = self._page
 
-        # Step 0: Clear ALL non-AOM slicers so AOM dropdown shows all 41 names.
-        # The report is saved with 'Operation Support = Anuradha Mishra' which
-        # cross-filters the AOM dropdown to only ~3 names. We reset everything first.
-        self._reset_non_aom_slicers()
+        # Attempts 1 & 2: in place, no reload.
+        for attempt in (1, 2):
+            log.info(f"  AOM slicer: attempt {attempt}/3 for '{filter_email}'...")
+            self._reset_non_aom_slicers()
+            if self._try_slicer(filter_email):
+                return True
 
-        # Primary: AOM slicer
-        log.info("  Step A: Opening AOM slicer dropdown...")
-        if self._try_slicer(filter_email):
-            return True
+        # Attempt 3: hard reset (reload) then one more try.
+        if report_url:
+            log.warning(f"  AOM slicer: attempts 1 & 2 failed. Reloading report for attempt 3/3...")
+            page.wait_for_timeout(2_000)
+            page.goto(report_url, timeout=NAV_TIMEOUT, wait_until="domcontentloaded")
+            page.wait_for_timeout(5_000)
+            self._handle_identity_prompt()
+            self._open_filters_pane()
+            page.wait_for_timeout(1_500)
+            self._reset_non_aom_slicers()
+            log.info(f"  AOM slicer: attempt 3/3 for '{filter_email}' (after reload)...")
+            if self._try_slicer(filter_email):
+                return True
+        else:
+            log.warning("  No report_url available for attempt 3 reload — skipping to Filters pane fallback.")
 
         # Fallback: Filters pane card
-        log.info("  Step B: Trying Filters pane card for 'AOM'...")
         log.info(f"  Step B: Trying Filters pane card for '{filter_column}'...")
         card_found = False
         try:

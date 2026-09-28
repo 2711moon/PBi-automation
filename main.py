@@ -347,11 +347,10 @@ def main():
                     p3_ok, p3_fail = run_phase(exporter, mailer, retry_aoms, aoms, target_date, phase_num=3)
                     print_phase_summary(3, p3_ok, p3_fail)
                 else:
-                    log.info("  Phase 2 achieved 100%% success — Phase 3 not needed.")
+                    log.info("  Phase 2 achieved 100% success — Phase 3 not needed.")
             else:
                 log.info("  Phase 2 skipped by user.")
         else:
-            log.info("  Phase 1 achieved 100%% success — Phase 2 and Phase 3 not needed.")
             log.info("  Phase 1 achieved 100% success — Phase 2 and Phase 3 not needed.")
 
     # ── Cleanup + final summary ───────────────────────────────────────────────
