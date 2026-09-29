@@ -740,7 +740,7 @@ class PowerBIExporter:
 
             from_input, to_input = date_inputs[0], date_inputs[1]
 
-            def _set_one(input_handle, value: str, label: str) -> bool:
+            def _set_one(input_handle, value: str, label: str, attempt: int = 1) -> bool:
                 try:
                     input_handle.click(force=True, timeout=2_000)
                     page.wait_for_timeout(200)
@@ -761,6 +761,11 @@ class PowerBIExporter:
                         f"  Date {label}: typed '{value}' but field now shows "
                         f"'{actual}' — may not have applied."
                     )
+                    if attempt < 2:
+                        # Field may not have been ready yet (e.g. right after
+                        # navigation) -- one retry with a longer settle wait.
+                        page.wait_for_timeout(1_000)
+                        return _set_one(input_handle, value, label, attempt=attempt + 1)
                     return False
                 except Exception as e:
                     log.warning(f"  Date {label} set failed: {e}")
@@ -1155,16 +1160,33 @@ class PowerBIExporter:
                 pass
 
         def _check_target_visible() -> bool:
-            return any(page.locator(s).count() > 0 for s in EMAIL_SELS)
+            # Must agree with _click_target()'s visibility-aware matching --
+            # otherwise a stale/hidden duplicate match here (present but not
+            # visible) would report "found" while _click_target() correctly
+            # refuses to click it, dead-ending instead of falling through to
+            # the scroll fallback.
+            for sel in EMAIL_SELS:
+                loc = page.locator(sel)
+                for idx in range(loc.count()):
+                    try:
+                        if loc.nth(idx).is_visible(timeout=500):
+                            return True
+                    except Exception:
+                        continue
+            return False
 
         def _get_top_visible_option_text() -> str:
-            """First (topmost) currently-rendered option's text, used for the
-            alphabetical scroll early-stop (the list is sorted A-Z)."""
+            """First (topmost) currently-rendered, genuinely VISIBLE option's
+            text, used for the alphabetical scroll early-stop (the list is
+            sorted A-Z). Skips hidden/stale elements -- a duplicate leftover
+            option list (can appear after switching pages / setting the date
+            slicer) would otherwise report text from the wrong list."""
             try:
                 return page.evaluate(f"""
                 () => {{
                     const els = document.querySelectorAll('{OPTION_SELS}');
                     for (const e of els) {{
+                        if (e.offsetParent === null) continue;
                         const t = (e.innerText || e.textContent || '').trim();
                         if (t) return t;
                     }}
@@ -1177,13 +1199,24 @@ class PowerBIExporter:
         def _click_target() -> bool:
             # Single click only \u2014 Power BI slicer options are checkbox-style;
             # a second click risks toggling the just-made selection back off.
+            # IMPORTANT: don't blindly take the first DOM match -- if a stale
+            # or hidden duplicate option list is present (can happen after
+            # switching pages / setting the date slicer), the first match
+            # may not be the actually-open dropdown's option. Click the
+            # first genuinely VISIBLE match instead.
             for sel in EMAIL_SELS:
                 try:
                     loc = page.locator(sel)
-                    if loc.count() > 0:
-                        opt = loc.first
+                    n = loc.count()
+                    for idx in range(n):
+                        candidate = loc.nth(idx)
+                        try:
+                            if not candidate.is_visible(timeout=500):
+                                continue
+                        except Exception:
+                            continue
                         self._handle_identity_prompt()
-                        opt.evaluate('el => el.click()')   # JS click (bypasses overlay)
+                        candidate.evaluate('el => el.click()')   # JS click (bypasses overlay)
                         page.wait_for_timeout(1_500)
                         log.info(f'  Selected \'{filter_email}\' in {slicer_label} slicer \u2713')
                         page.keyboard.press('Escape')
@@ -1242,7 +1275,12 @@ class PowerBIExporter:
             # Target the search input specifically inside the opened dropdown container
             sb_h = page.evaluate_handle("""
             () => {
-                const opt = document.querySelector('[role="option"]');
+                // Prefer a genuinely VISIBLE option over the first DOM match --
+                // a stale/hidden duplicate option list (can appear after
+                // switching pages / setting the date slicer) would otherwise
+                // send us down the wrong ancestor chain to the wrong input.
+                const opts = Array.from(document.querySelectorAll('[role="option"]'));
+                const opt = opts.find(el => el.offsetParent !== null) || opts[0];
                 if (!opt) return null;
                 let p = opt.parentElement;
                 for (let i = 0; i < 10; i++) {
@@ -1297,7 +1335,11 @@ class PowerBIExporter:
             # Focus the list container so keystrokes scroll it
             page.evaluate("""
             () => {
-                const opt = document.querySelector('[role="option"]');
+                // Prefer a genuinely VISIBLE option (see the search-box finder
+                // above for why -- a stale/hidden duplicate list would
+                // otherwise get focused instead of the real open dropdown).
+                const opts = Array.from(document.querySelectorAll('[role="option"]'));
+                const opt = opts.find(el => el.offsetParent !== null) || opts[0];
                 if (opt) {
                     // Focus the scrollable viewport WITHOUT clicking any option
                     // (clicking an option here would accidentally select the
