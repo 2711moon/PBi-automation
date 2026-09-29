@@ -87,7 +87,26 @@ class PowerBIExporter:
             );
 
             function scopeToGrid(anchor) {
+                // Prefer stopping at the nearest Power BI "visual container"
+                // boundary -- each visual (table, chart, ...) is wrapped in
+                // one of these, so this keeps us within JUST the table the
+                // anchor came from, instead of climbing past it into a
+                // shared container that also wraps SIBLING visuals (which
+                // was letting other tables' unrelated names, e.g. a
+                // Cluster Manager, leak into the designation column's
+                // scoped text and cause false conflict detections).
                 let container = anchor;
+                for (let i = 0; i < 10 && container.parentElement; i++) {
+                    container = container.parentElement;
+                    if (container.matches && container.matches(
+                        '.visual-container, .visualContainer, [class*="visualContainer" i]'
+                    )) {
+                        return container.innerText;
+                    }
+                }
+                // Fallback: the old "nearest ancestor containing a grid"
+                // heuristic, restarting the climb from the anchor.
+                container = anchor;
                 for (let i = 0; i < 6 && container.parentElement; i++) {
                     container = container.parentElement;
                     if (container.querySelectorAll('table, [role="grid"], [role="row"]').length > 0) {
@@ -1844,6 +1863,14 @@ class PowerBIExporter:
                     f"  ║  Conflicting data : {', '.join(set(conflicting))}\n"
                     f"  ║  Report contains another AOM's data. Aborting.\n"
                     "  ╚" + "═" * 50 + "╝"
+                )
+                # Diagnostic: dump the actual scoped text length + a preview
+                # so a repeat of this failure is debuggable from the log
+                # alone, instead of another guess-and-check round on the
+                # scoping logic.
+                log.error(
+                    f"  [diagnostic] scoped text length: {len(page_text)} chars. "
+                    f"Preview: {page_text[:400]!r}"
                 )
             return False
 
