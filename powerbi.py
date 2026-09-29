@@ -623,47 +623,62 @@ class PowerBIExporter:
                 self._select_report_page(page_name)
             self._loaded_report_state = (report_url, page_name, date_from, date_to)
 
-        log.info(f"  Setting filter: {filter_column} = {filter_value}")
-        if not self._apply_filter_via_pane(filter_value, filter_column, report_url,
-                                            slicer_label, reprepare_fn=_reprepare_after_reload):
-            log.error(
-                f"  FILTER APPLY FAILED \u2014 {target_name}:\n"
-                f"  Could not set '{filter_column}' = '{filter_value}' in UI.\n"
-                f"  This report will NOT be attached."
-            )
-            self._debug_screenshot(page, f"{target_name}_{report_name}")
-            return None
-
-        # Smart wait: poll until other targets' data disappears from the page
-        MAX_WAIT_SEC  = 90
-        POLL_INTERVAL = 5_000   # ms
-        elapsed_sec   = 0
-
-        log.info(f"  Polling until data refreshes (max {MAX_WAIT_SEC}s)...")
-        while elapsed_sec < MAX_WAIT_SEC:
-            page.wait_for_timeout(POLL_INTERVAL)
-            elapsed_sec += POLL_INTERVAL // 1_000
-            try:
-                page.keyboard.press("Escape")
-                page.wait_for_timeout(200)
-                page_text = page.evaluate(self._scoped_verify_text_js(slicer_label, verify_heading))
-                page_text_lower = page_text.lower()
-                conflicts = [v for v in other_values if v.lower() in page_text_lower]
-                if not conflicts:
-                    log.info(
-                        f"  Data looks clean after {elapsed_sec}s "
-                        f"\u2014 no other {slicer_label} values found. Proceeding."
+        def _attempt_once(final: bool) -> bool:
+            log.info(f"  Setting filter: {filter_column} = {filter_value}")
+            if not self._apply_filter_via_pane(filter_value, filter_column, report_url,
+                                                slicer_label, reprepare_fn=_reprepare_after_reload):
+                if final:
+                    log.error(
+                        f"  FILTER APPLY FAILED \u2014 {target_name}:\n"
+                        f"  Could not set '{filter_column}' = '{filter_value}' in UI.\n"
+                        f"  This report will NOT be attached."
                     )
-                    break
-                log.info(
-                    f"  [{elapsed_sec}s] Still waiting \u2014 "
-                    f"conflicting values present: {', '.join(conflicts)}"
-                )
-            except Exception:
-                pass
+                return False
+            return _poll_and_verify()
 
-        if not self._verify_filter_on_screen(filter_value, f"{target_name}_{report_name}",
-                                              other_values, slicer_label, verify_heading):
+        def _poll_and_verify() -> bool:
+            # Smart wait: poll until other targets' data disappears from the page
+            MAX_WAIT_SEC  = 90
+            POLL_INTERVAL = 5_000   # ms
+            elapsed_sec   = 0
+
+            log.info(f"  Polling until data refreshes (max {MAX_WAIT_SEC}s)...")
+            while elapsed_sec < MAX_WAIT_SEC:
+                page.wait_for_timeout(POLL_INTERVAL)
+                elapsed_sec += POLL_INTERVAL // 1_000
+                try:
+                    page.keyboard.press("Escape")
+                    page.wait_for_timeout(200)
+                    page_text = page.evaluate(self._scoped_verify_text_js(slicer_label, verify_heading))
+                    page_text_lower = page_text.lower()
+                    conflicts = [v for v in other_values if v.lower() in page_text_lower]
+                    if not conflicts:
+                        log.info(
+                            f"  Data looks clean after {elapsed_sec}s "
+                            f"\u2014 no other {slicer_label} values found. Proceeding."
+                        )
+                        break
+                    log.info(
+                        f"  [{elapsed_sec}s] Still waiting \u2014 "
+                        f"conflicting values present: {', '.join(conflicts)}"
+                    )
+                except Exception:
+                    pass
+
+            return self._verify_filter_on_screen(filter_value, f"{target_name}_{report_name}",
+                                                  other_values, slicer_label, verify_heading)
+
+        success = _attempt_once(final=False)
+        if not success:
+            # Verification (or selection) failed -- rather than moving on to
+            # the next target against a possibly stuck/blank report (wasting
+            # every subsequent attempt), hard-refresh the report and wait for
+            # it to actually render content again before trying ONE more time.
+            self._hard_refresh_report(report_url, page_name, date_from, date_to)
+            success = _attempt_once(final=True)
+
+        if not success:
+            self._debug_screenshot(page, f"{target_name}_{report_name}")
             return None
 
         # Export
@@ -1565,6 +1580,57 @@ class PowerBIExporter:
             f"  Could not set '{filter_column}' = '{filter_email}'.\n"
             f"  Email will NOT be sent."
         )
+        return False
+
+    def _hard_refresh_report(self, report_url: str, page_name: str,
+                              date_from: str, date_to: str) -> bool:
+        """
+        Force-reload the report page and wait for it to genuinely render
+        data again, not just navigate. Used when a target's filter
+        selection and/or verification failed -- a plain slicer retry can't
+        recover from the report itself having gone blank/stuck (which does
+        happen after enough slicer interaction), only a real refresh can.
+
+        Returns True if real content was detected before giving up on the
+        wait (best-effort either way -- the caller retries regardless).
+        """
+        page = self._page
+        log.warning("  Report appears stuck/blank — hard refreshing and waiting for it to load...")
+        page.goto(report_url, timeout=NAV_TIMEOUT, wait_until="domcontentloaded")
+        page.wait_for_timeout(6_000)
+        self._handle_identity_prompt()
+        self._handle_identity_prompt()
+        self._open_filters_pane()
+        page.wait_for_timeout(1_500)
+
+        if date_from and date_to:
+            self._set_date_filter(date_from, date_to)
+        if page_name:
+            self._select_report_page(page_name)
+        self._loaded_report_state = (report_url, page_name, date_from, date_to)
+
+        # Wait for the report to show SOME real visual content before
+        # letting the caller retry, rather than immediately retrying
+        # against a still-blank page.
+        for _ in range(10):
+            try:
+                has_content = page.evaluate("""
+                () => {
+                    const grids = document.querySelectorAll('table, [role="grid"], [role="row"]');
+                    for (const g of grids) {
+                        if ((g.innerText || '').trim().length > 20) return true;
+                    }
+                    return false;
+                }
+                """)
+            except Exception:
+                has_content = False
+            if has_content:
+                log.info("  Report content detected after refresh.")
+                return True
+            page.wait_for_timeout(2_000)
+
+        log.warning("  Report still appears blank after refresh wait — proceeding anyway.")
         return False
 
     def _verify_filter_on_screen(self, filter_email: str, aom_name: str,
