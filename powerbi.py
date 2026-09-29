@@ -562,6 +562,24 @@ class PowerBIExporter:
             self._handle_identity_prompt()
             self._handle_identity_prompt()
 
+            # Wait for the report to actually render something before
+            # touching date/page/slicer controls -- on the very first load
+            # of a session especially, Power BI can still be blank well
+            # after navigation "completes", and starting slicer interaction
+            # against a blank report just guarantees a wasted first attempt.
+            while not self._wait_for_report_content(max_wait_sec=90, poll_sec=3):
+                self._debug_screenshot(page, f"initial_load_{report_name}")
+                answer = input(
+                    f"\n  Report '{report_name}' still appears blank after 90s. "
+                    f"Wait another 90s? [Y/n]: "
+                ).strip().lower()
+                if answer not in ("", "y", "yes"):
+                    log.warning(
+                        "  Proceeding without confirmed report content "
+                        "(user chose not to wait further)."
+                    )
+                    break
+
             log.info(f"  Opening Filters pane...")
             self._open_filters_pane()
             page.wait_for_timeout(1_500)
@@ -1612,7 +1630,27 @@ class PowerBIExporter:
         # Wait for the report to show SOME real visual content before
         # letting the caller retry, rather than immediately retrying
         # against a still-blank page.
-        for _ in range(10):
+        if self._wait_for_report_content(max_wait_sec=20, poll_sec=2):
+            log.info("  Report content detected after refresh.")
+            return True
+        log.warning("  Report still appears blank after refresh wait — proceeding anyway.")
+        return False
+
+    def _wait_for_report_content(self, max_wait_sec: int = 90, poll_sec: int = 3) -> bool:
+        """
+        Poll up to `max_wait_sec` for the report to show SOME real rendered
+        content (a table/grid with actual text) rather than assuming a bare
+        page navigation means the report is actually ready -- Power BI can
+        take a while to render, especially on the very first load of a
+        session, and beginning date/page/slicer interaction before anything
+        has rendered just guarantees a wasted first attempt.
+
+        Returns True as soon as content is detected, False if the whole
+        wait elapses blank (caller decides what to do about that).
+        """
+        page = self._page
+        elapsed = 0
+        while elapsed < max_wait_sec:
             try:
                 has_content = page.evaluate("""
                 () => {
@@ -1626,11 +1664,9 @@ class PowerBIExporter:
             except Exception:
                 has_content = False
             if has_content:
-                log.info("  Report content detected after refresh.")
                 return True
-            page.wait_for_timeout(2_000)
-
-        log.warning("  Report still appears blank after refresh wait — proceeding anyway.")
+            page.wait_for_timeout(poll_sec * 1_000)
+            elapsed += poll_sec
         return False
 
     def _verify_filter_on_screen(self, filter_email: str, aom_name: str,
