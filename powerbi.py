@@ -35,18 +35,28 @@ class PowerBIExporter:
     def _scoped_verify_text_js(self, slicer_label: str, verify_heading: str = None) -> str:
         """
         Build the JS used to extract "verifiable" page text for the
-        conflict/presence checks. Scoped to a "{slicer_label} Wise Sales
-        Summary"-style table heading when present, because other tables in
-        the report (Cluster-wise, Zone/OPS Head-wise) show staff names
-        (Cluster Manager, Operation Head, ...) that can coincidentally match
-        a DIFFERENT target's name and cause a false "data conflict" even
-        though the actual filter is correct. Falls back to the whole page
-        (minus slicer DOM, which stores every option's text even while
-        closed) if that table heading can't be found.
+        conflict/presence checks.
+
+        A report can have several tables stacked in a hierarchy (e.g.
+        "Operation Head Wise" -> "Operation Support Wise" -> a detail table
+        that finally has an actual "{slicer_label}" column) before the one
+        that reflects the real target-level filter. Searching for a
+        "{slicer_label} Wise Sales Summary"-style heading only works if a
+        report happens to name its table that way, which isn't universal.
+
+        So the primary strategy is now: find a table/grid whose header row
+        has a cell whose text EXACTLY matches `slicer_label` (e.g. "AOM",
+        "Cluster Manager") -- that is the actual designation column, and
+        scoping to its enclosing grid avoids other tables' unrelated staff
+        names (Operation Head, Cluster Manager, ...) causing false
+        "conflict" detections. Falls back to the old heading-pattern search,
+        then to the whole page (minus slicer DOM, which stores every
+        option's text even while closed), if no such column can be found.
 
         `verify_heading` lets a specific report override the default
-        "{slicer_label} Wise Sales Summary" heading pattern if its actual
-        table heading text doesn't follow that convention.
+        "{slicer_label} Wise Sales Summary" heading pattern used by the
+        fallback strategy, in case its actual table heading text doesn't
+        follow that convention.
         """
         if verify_heading:
             heading_pattern = verify_heading
@@ -57,31 +67,27 @@ class PowerBIExporter:
             escaped_label = re.sub(r"\s+", r"\\s*", re.escape(slicer_label))
             heading_pattern = escaped_label + r"\s*Wise\s*Sales\s*Summary"
         heading_js = json.dumps(heading_pattern)
+        label_js = json.dumps(slicer_label)
         return r"""
         () => {
-            // Clone the body so we don't mutate the live DOM
-            let clone = document.body.cloneNode(true);
-            // Remove all slicer-related elements — they store all option
-            // names in the DOM even when the dropdown is closed, which
-            // would cause false "conflict" detections.
-            clone.querySelectorAll(
-                '.slicer-container, .visual-slicer, ' +
-                '[class*="slicer"], [class*="Slicer"], ' +
-                '.slicerDropdownMenu, [role="listbox"], ' +
-                '[aria-label*="slicer"], [aria-label*="Slicer"]'
-            ).forEach(el => el.remove());
+            // Search the LIVE dom first (so real visibility checks work --
+            // a detached clone always reports offsetParent === null for
+            // everything, so it can't tell real content from a stale/hidden
+            // duplicate, e.g. left behind by a just-completed PDF export).
+            function isVisible(el) { return el.offsetParent !== null; }
+            function inSlicer(el) {
+                return !!el.closest(
+                    '.slicer-container, .visual-slicer, [class*="slicer" i], ' +
+                    '.slicerDropdownMenu, [role="listbox"], [aria-label*="slicer" i]'
+                );
+            }
 
-            // Try to scope to the target summary table specifically — that's
-            // the only section that reflects the actual target-level filter.
-            const leafNodes = Array.from(clone.querySelectorAll('*')).filter(
-                el => el.children.length === 0
+            const liveLeaf = Array.from(document.querySelectorAll('*')).filter(
+                el => el.children.length === 0 && isVisible(el) && !inSlicer(el)
             );
-            const headingRe = new RegExp(__HEADING_PATTERN__, 'i');
-            const heading = leafNodes.find(
-                el => headingRe.test(el.textContent || '')
-            );
-            if (heading) {
-                let container = heading;
+
+            function scopeToGrid(anchor) {
+                let container = anchor;
                 for (let i = 0; i < 6 && container.parentElement; i++) {
                     container = container.parentElement;
                     if (container.querySelectorAll('table, [role="grid"], [role="row"]').length > 0) {
@@ -90,9 +96,38 @@ class PowerBIExporter:
                 }
                 return container.innerText;
             }
+
+            // Strategy 1: a table/grid with a column literally named
+            // `slicer_label` (e.g. "AOM") -- the actual designation column,
+            // wherever it sits in the report's table hierarchy.
+            const label = __LABEL__;
+            const labelCol = liveLeaf.find(el => (el.textContent || '').trim() === label);
+            if (labelCol) {
+                return scopeToGrid(labelCol);
+            }
+
+            // Strategy 2 (fallback): a "{label} Wise Sales Summary"-style heading.
+            const headingRe = new RegExp(__HEADING_PATTERN__, 'i');
+            const heading = liveLeaf.find(
+                el => headingRe.test(el.textContent || '')
+            );
+            if (heading) {
+                return scopeToGrid(heading);
+            }
+
+            // Strategy 3 (last resort): whole page. Clone + strip slicer
+            // elements here since we're deliberately reading broadly,
+            // including anything merely off-screen (not just hidden).
+            let clone = document.body.cloneNode(true);
+            clone.querySelectorAll(
+                '.slicer-container, .visual-slicer, ' +
+                '[class*="slicer"], [class*="Slicer"], ' +
+                '.slicerDropdownMenu, [role="listbox"], ' +
+                '[aria-label*="slicer"], [aria-label*="Slicer"]'
+            ).forEach(el => el.remove());
             return clone.innerText;
         }
-        """.replace("__HEADING_PATTERN__", heading_js)
+        """.replace("__HEADING_PATTERN__", heading_js).replace("__LABEL__", label_js)
 
     def __init__(self, username: str, password: str):
         self.username     = username
@@ -846,6 +881,7 @@ class PowerBIExporter:
                     '.slicerDropdownMenu, [aria-haspopup="listbox"], [role="combobox"]'
                 );
                 for (const menu of menus) {
+                    if (menu.offsetParent === null) continue;  // skip stale/hidden clones
                     let p = menu.parentElement;
                     for (let i = 0; i < 6; i++) {
                         if (!p || p === document.body) break;
@@ -875,6 +911,14 @@ class PowerBIExporter:
             allMenus.forEach(menu => {
                 // Skip if inside the AOM container
                 if (aomContainer && aomContainer.contains(menu)) return;
+
+                // Skip elements with no layout box at all (display:none, or
+                // an ancestor with display:none) -- these are stale/hidden
+                // clones (e.g. left behind by a just-completed PDF export),
+                // NOT real slicers merely scrolled out of the viewport
+                // (which still have a normal offsetParent and are fine to
+                // keep targeting, per this function's off-screen support).
+                if (menu.offsetParent === null) return;
 
                 // Scroll into view so hover events work
                 menu.scrollIntoView({ block: 'center', inline: 'center' });
@@ -1355,7 +1399,20 @@ class PowerBIExporter:
             }
             """)
 
-            max_scrolls = 15
+            # Without a working search box, the list stays unfiltered (all
+            # 41+ names) instead of narrowed down to a handful, so a name
+            # near the end of the alphabet may need many more PageDowns to
+            # reach -- give it a much bigger budget in that case instead of
+            # giving up early. When search DID narrow the list, 15 stays
+            # plenty and keeps this fast.
+            max_scrolls = 15 if search_typed else 45
+
+            # Alphabetical early-stop requires the SAME "we've passed it"
+            # reading on two consecutive checks before actually breaking --
+            # guards against a single stale/mid-render read causing a false
+            # give-up (which matters more here since, without search
+            # narrowing things down, there's a longer scroll to get right).
+            pass_streak = 0
             for s in range(max_scrolls):
                 if _check_target_visible():
                     log.info(f"  Found '{filter_email}' after {s} scrolls!")
@@ -1368,11 +1425,15 @@ class PowerBIExporter:
                 if target_letter and top_text:
                     top_letter = top_text.strip()[0].lower()
                     if top_letter > target_letter:
-                        log.info(
-                            f"  Visible list has passed '{filter_email}' alphabetically "
-                            f"(now at '{top_text}') — stopping scroll early."
-                        )
-                        break
+                        pass_streak += 1
+                        if pass_streak >= 2:
+                            log.info(
+                                f"  Visible list has passed '{filter_email}' alphabetically "
+                                f"(now at '{top_text}') — stopping scroll early."
+                            )
+                            break
+                    else:
+                        pass_streak = 0
 
                 # Press PageDown to scroll the virtual list
                 page.keyboard.press('PageDown')
@@ -1545,6 +1606,21 @@ class PowerBIExporter:
             page.wait_for_timeout(300)
         except Exception:
             pass
+
+        # Reports can stack several tables vertically (e.g. Operation Head ->
+        # Operation Support -> a detail table with the actual designation
+        # column), and Power BI may not render a table's rows into the DOM
+        # until it's scrolled into view. Scroll through the canvas so the
+        # designation column (searched for by _scoped_verify_text_js) is
+        # actually present to find, not just visually "below the fold".
+        try:
+            page.mouse.wheel(0, 0)  # ensure focus is on the report canvas
+            for _ in range(6):
+                page.mouse.wheel(0, 600)
+                page.wait_for_timeout(250)
+        except Exception:
+            pass
+
         try:
             page_text = page.evaluate(self._scoped_verify_text_js(slicer_label, verify_heading))
         except Exception as e:
