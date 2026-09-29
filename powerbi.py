@@ -12,8 +12,6 @@ import os
 import re
 import json
 import logging
-from typing import Optional
-
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 from config import EXPORTS_DIR
@@ -160,6 +158,7 @@ class PowerBIExporter:
         self._aom_trigger_idx = None  # cached index of the AOM slicer in the trigger list
         self._loaded_report_url = None  # url of the report currently loaded in the page (None = not loaded yet)
         self._loaded_report_state = None  # (url, page, date_from, date_to) tuple currently prepared in the page
+        self._last_verify_conflicts = []  # names flagged by the most recent _verify_filter_on_screen() call
 
     # -- Context manager -------------------------------------------------------
 
@@ -553,7 +552,7 @@ class PowerBIExporter:
         currently-prepared state, so calling this once per report per
         group-phase (before looping targets) is cheap on repeat calls.
 
-        Returns the report URL (used by export_for_target for the attempt-3
+        Returns the report URL (used by export_for_target for the attempt-2
         reload target and PDF/screenshot naming).
         """
         workspace   = report_cfg["workspace"]
@@ -614,16 +613,23 @@ class PowerBIExporter:
         return report_url
 
     def export_for_target(self, target: dict, report_cfg: dict, slicer_label: str,
-                           other_targets: list, date_str: str) -> Optional[str]:
+                           other_targets: list, date_str: str) -> tuple:
         """
         For ONE target within an already-`prepare_report`'d report:
-          1. Apply filter via slicer (3-attempt cycle, reload only on the 3rd)
+          1. Apply filter via slicer (2-attempt cycle, reload only on the 2nd)
              -> Filters pane card fallback
           2. Smart-wait until conflicting data (from other_targets) disappears
-          3. Verify only the expected target's data is on screen
+          3. Verify the expected target's data is on screen
           4. Export as PDF
 
-        Returns local PDF path on success, None on failure.
+        Returns (pdf_path, conflict_names):
+          - pdf_path is the local PDF path on success, None on failure.
+          - conflict_names is a list of any OTHER known names that were also
+            seen in the scoped verification text on the successful check
+            (see _verify_filter_on_screen) -- usually a coincidental name
+            match with a different table's Operation Head / Cluster Manager
+            / etc, not wrong data. Empty list when nothing was flagged, or
+            when pdf_path is None.
         """
         workspace      = report_cfg["workspace"]
         report_name    = report_cfg["name"]
@@ -642,7 +648,7 @@ class PowerBIExporter:
         filter_value = target["columns"].get(filter_column)
         if not filter_value:
             log.error(f"  Target '{target_name}' has no value for column '{filter_column}' — skipping.")
-            return None
+            return None, []
 
         other_values = [t["columns"].get(filter_column) for t in other_targets]
         other_values = [v for v in other_values if v]
@@ -662,11 +668,15 @@ class PowerBIExporter:
                 f"  This report will NOT be attached."
             )
             self._debug_screenshot(page, f"{target_name}_{report_name}")
-            return None
+            return None, []
+
+        # The final successful verification inside _apply_filter_via_pane
+        # (if any) left its flagged names here.
+        conflicts = list(self._last_verify_conflicts)
 
         # Confirm Date + Page haven't drifted before export -- read-only
         # checks first, so the common case (nothing drifted) doesn't risk
-        # disturbing the state we just spent up to 3 attempts verifying.
+        # disturbing the state we just spent up to 2 attempts verifying.
         # Only re-applies (and re-verifies the AOM filter afterward) if
         # something actually doesn't match.
         needs_reverify = False
@@ -694,7 +704,8 @@ class PowerBIExporter:
                     f"{target_name} — skipping export."
                 )
                 self._debug_screenshot(page, f"{target_name}_{report_name}")
-                return None
+                return None, []
+            conflicts = list(self._last_verify_conflicts)
 
         # Export
         safe_target = "".join(c if c.isalnum() or c in " _-" else "_" for c in target_name).strip().replace(" ", "_")
@@ -703,12 +714,13 @@ class PowerBIExporter:
         fpath = os.path.join(EXPORTS_DIR, fname)
 
         try:
-            return self._trigger_pdf_export(page, fpath, f"{target_name}_{report_name}",
-                                             only_current_page=page_name is not None)
+            pdf_path = self._trigger_pdf_export(page, fpath, f"{target_name}_{report_name}",
+                                                 only_current_page=page_name is not None)
+            return pdf_path, conflicts
         except Exception as e:
             log.error(f"  Export failed: {e}")
             self._debug_screenshot(page, f"{target_name}_{report_name}")
-            return None
+            return None, []
 
     def _open_filters_pane(self) -> bool:
         """
@@ -1611,19 +1623,21 @@ class PowerBIExporter:
         report visuals caught up yet, so each attempt below ends with a
         real verification, not just a successful click.
 
-        Runs the full 3-attempt cycle, where EACH attempt = reset other
-        slicers -> select (search + scroll fallback) -> smart-wait -> verify:
+        Runs a 2-attempt cycle, where EACH attempt = reset other slicers ->
+        select (search + scroll fallback) -> smart-wait -> verify:
           - Attempt 1: in place, no reload.
-          - Attempt 2: same, in place, no reload (a fresh reset+reselect+
-            verify, not just re-checking the same state -- a transient
-            report lag on attempt 1 is exactly what this catches).
-          - Attempt 3: only if 1 & 2 both failed -- reload the report page,
+          - Attempt 2: only if attempt 1 failed -- reload the report page,
             re-apply the page/date-range state, wait up to 90s for the
             report to show real content again (same budget as the very
             first load of a session, since a plain reload doesn't guarantee
             Power BI is actually ready any faster the second time), THEN
             reset other slicers and try one last time.
-        Falls back to the Filters pane card (unverified) if all 3 fail.
+        (Previously ran a 3rd, identical in-place retry between these two --
+        dropped since the scroll-position bug that once made a bare repeat
+        occasionally succeed was fixed at the root via the keyboard-driven
+        Home/PageUp reset above, so that middle attempt stopped pulling its
+        weight and only cost time.)
+        Falls back to the Filters pane card (unverified) if both fail.
         """
         page = self._page
         other_values = other_values or []
@@ -1654,15 +1668,14 @@ class PowerBIExporter:
                 if is_last_check:
                     return False
 
-        # Attempts 1 & 2: in place, no reload.
-        for attempt in (1, 2):
-            log.info(f"  {slicer_label} slicer: attempt {attempt}/3 for '{filter_email}'...")
-            if _select_wait_verify():
-                return True
+        # Attempt 1: in place, no reload.
+        log.info(f"  {slicer_label} slicer: attempt 1/2 for '{filter_email}'...")
+        if _select_wait_verify():
+            return True
 
-        # Attempt 3: hard reset (reload), wait for real content, then one more try.
+        # Attempt 2: hard reset (reload), wait for real content, then one more try.
         if report_url:
-            log.warning(f"  {slicer_label} slicer: attempts 1 & 2 failed. Reloading report for attempt 3/3...")
+            log.warning(f"  {slicer_label} slicer: attempt 1 failed. Reloading report for attempt 2/2...")
             page.wait_for_timeout(2_000)
             page.goto(report_url, timeout=NAV_TIMEOUT, wait_until="domcontentloaded")
             page.wait_for_timeout(5_000)
@@ -1679,13 +1692,13 @@ class PowerBIExporter:
             # Same 90s content-wait budget as the very first load of the
             # session -- a reload doesn't mean Power BI is ready any faster.
             if not self._wait_for_report_content(max_wait_sec=90, poll_sec=3):
-                log.warning("  Report still appears blank after reload wait for attempt 3 — proceeding anyway.")
+                log.warning("  Report still appears blank after reload wait for attempt 2 — proceeding anyway.")
 
-            log.info(f"  {slicer_label} slicer: attempt 3/3 for '{filter_email}' (after reload)...")
+            log.info(f"  {slicer_label} slicer: attempt 2/2 for '{filter_email}' (after reload)...")
             if _select_wait_verify():
                 return True
         else:
-            log.warning("  No report_url available for attempt 3 reload — skipping to Filters pane fallback.")
+            log.warning("  No report_url available for attempt 2 reload — skipping to Filters pane fallback.")
 
         # Fallback: Filters pane card (search by the slicer's UI label, not
         # necessarily filter_column -- e.g. filter_column may be "AOM Mail Id"
@@ -1780,18 +1793,32 @@ class PowerBIExporter:
         Screenshot the current report state and read all visible page text.
 
         Checks:
-          1. Expected AOM email IS visible in the data → proves filter is active
-          2. No OTHER AOM's email is visible in the data → proves no wrong data
+          1. Expected AOM email IS visible in the data → proves filter is
+             active. This is the only BLOCKING check.
+          2. Whether any OTHER known name is also visible in the scoped
+             text. This is no longer treated as a hard failure -- reports
+             routinely stack multiple tables (Operation Head Wise,
+             Cluster Manager, ...) whose own staff names can coincidentally
+             match another person's name elsewhere in the SAME designation's
+             roster, which used to cause a false "data conflict" abort even
+             though the actual designation column was correctly filtered.
+             Instead, any such name is recorded on
+             `self._last_verify_conflicts` (read by the caller) and logged
+             as a warning -- so it can be surfaced later (e.g. Phase 2's
+             "found, but flagged" review) without blocking the export.
 
-        Returns True  → safe to export
-        Returns False → conflict or cannot verify → email is NOT sent, counts as FAIL
+        Returns True  → expected name found, safe to export (Check 2 may
+                         still have recorded conflict names for the caller
+                         to look at via self._last_verify_conflicts).
+        Returns False → expected name NOT found / cannot verify -> email is
+                         NOT sent, counts as FAIL.
         Reason is always logged explicitly, EXCEPT the "not found yet" case
-        (not a real conflict) when `quiet=True` -- used for the interim
+        (not a real failure) when `quiet=True` -- used for the interim
         retries of the 90s/15s wait-for-report-to-catch-up loop, so a report
         that just needs another 15-30s doesn't look like a hard failure in
-        the log at every intermediate check. A genuine data conflict is
-        always logged loudly regardless of `quiet`.
+        the log at every intermediate check.
         """
+        self._last_verify_conflicts = []
         page = self._page
         page.wait_for_timeout(3_000)   # let all visuals fully render
 
@@ -1846,37 +1873,26 @@ class PowerBIExporter:
         expected_lower  = filter_email.lower()
         others_lower    = [e.lower() for e in other_emails]
 
-        # Check 1: any OTHER AOM's email visible in the report data?
-        conflicting = [e for e in others_lower if e in page_text_lower]
+        # Check 1 (blocking): the expected email must be visible (proves
+        # the filter actually took effect on screen).
+        expected_found = expected_lower in page_text_lower
+
+        # Check 2 (non-blocking): any OTHER known name also visible in the
+        # scoped text? Recorded for the caller, never aborts the export by
+        # itself -- see the docstring above for why.
+        conflicting = sorted(set(e for e in others_lower if e in page_text_lower))
+        self._last_verify_conflicts = conflicting
         if conflicting:
-            if quiet:
-                log.info(
-                    f"  Still detecting {sorted(set(conflicting))} in the data "
-                    f"for {aom_name} — likely stale from the previous target, rechecking in 15s..."
-                )
-            else:
-                log.error(
-                    "\n"
-                    f"  ╔══ DATA CONFLICT — EMAIL WILL NOT BE SENT ══════╗\n"
-                    f"  ║  AOM              : {aom_name}\n"
-                    f"  ║  Expected filter  : {filter_email}\n"
-                    f"  ║  Conflicting data : {', '.join(set(conflicting))}\n"
-                    f"  ║  Report contains another AOM's data. Aborting.\n"
-                    "  ╚" + "═" * 50 + "╝"
-                )
-                # Diagnostic: dump the actual scoped text length + a preview
-                # so a repeat of this failure is debuggable from the log
-                # alone, instead of another guess-and-check round on the
-                # scoping logic.
-                log.error(
-                    f"  [diagnostic] scoped text length: {len(page_text)} chars. "
-                    f"Preview: {page_text[:400]!r}"
-                )
-            return False
+            log_fn = log.info if quiet else log.warning
+            log_fn(
+                f"  Note: also detecting {conflicting} in the scoped data for "
+                f"{aom_name} — likely a different table's Operation Head / "
+                f"Cluster Manager (or similar) name coincidentally matching "
+                f"another person in the roster, not necessarily wrong data. "
+                f"Flagged for review, export not blocked."
+            )
 
-
-        # Check 2: the expected email must be visible (proves filter worked)
-        if expected_lower not in page_text_lower:
+        if not expected_found:
             msg = (
                 f"  VERIFICATION {'not yet passing' if quiet else 'FAILED'} — {aom_name}:\n"
                 f"  Reason: '{filter_email}' not found in visible report data.\n"
@@ -1889,10 +1905,7 @@ class PowerBIExporter:
                 log.error(msg)
             return False
 
-        log.info(
-            f"  Data verification ✓ — only {filter_email} found.\n"
-            f"  No conflicting AOM data. Safe to export."
-        )
+        log.info(f"  Data verification ✓ — {filter_email} found. Safe to export.")
         return True
 
     def _trigger_pdf_export(self, page, fpath: str, aom_name: str, only_current_page: bool = False) -> str:
