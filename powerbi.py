@@ -189,7 +189,7 @@ class PowerBIExporter:
         """
         page = self._page
 
-        # Go directly to Microsoft login â€” skips the app.powerbi.com SSO redirect chain
+        # Go directly to Microsoft login — skips the app.powerbi.com SSO redirect chain
         log.info("  Navigating to Microsoft login page...")
         page.goto("https://login.microsoftonline.com/", timeout=NAV_TIMEOUT, wait_until="domcontentloaded")
 
@@ -234,7 +234,7 @@ class PowerBIExporter:
             pass
 
         # Step 5: Now that login is done, navigate explicitly to Power BI
-        # (Microsoft may redirect to M365 home â€” this ensures we land on Power BI)
+        # (Microsoft may redirect to M365 home — this ensures we land on Power BI)
         log.info("  Navigating to Power BI...")
         page.goto("https://app.powerbi.com/", timeout=NAV_TIMEOUT, wait_until="domcontentloaded")
         page.wait_for_timeout(3_000)
@@ -630,74 +630,52 @@ class PowerBIExporter:
 
         page = self._page
 
-        def _reprepare_after_reload():
-            # Called by _apply_filter_via_pane's attempt-3 reload path to
-            # re-apply the page/date state lost by the reload — otherwise
-            # subsequent targets in this report would silently export the
-            # wrong page/date range.
-            if date_from and date_to:
-                self._set_date_filter(date_from, date_to)
-            if page_name:
-                self._select_report_page(page_name)
-            self._loaded_report_state = (report_url, page_name, date_from, date_to)
-
-        def _attempt_once(final: bool) -> bool:
-            log.info(f"  Setting filter: {filter_column} = {filter_value}")
-            if not self._apply_filter_via_pane(filter_value, filter_column, report_url,
-                                                slicer_label, reprepare_fn=_reprepare_after_reload):
-                if final:
-                    log.error(
-                        f"  FILTER APPLY FAILED \u2014 {target_name}:\n"
-                        f"  Could not set '{filter_column}' = '{filter_value}' in UI.\n"
-                        f"  This report will NOT be attached."
-                    )
-                return False
-            return _poll_and_verify()
-
-        def _poll_and_verify() -> bool:
-            # Smart wait: poll until other targets' data disappears from the page
-            MAX_WAIT_SEC  = 90
-            POLL_INTERVAL = 5_000   # ms
-            elapsed_sec   = 0
-
-            log.info(f"  Polling until data refreshes (max {MAX_WAIT_SEC}s)...")
-            while elapsed_sec < MAX_WAIT_SEC:
-                page.wait_for_timeout(POLL_INTERVAL)
-                elapsed_sec += POLL_INTERVAL // 1_000
-                try:
-                    page.keyboard.press("Escape")
-                    page.wait_for_timeout(200)
-                    page_text = page.evaluate(self._scoped_verify_text_js(slicer_label, verify_heading))
-                    page_text_lower = page_text.lower()
-                    conflicts = [v for v in other_values if v.lower() in page_text_lower]
-                    if not conflicts:
-                        log.info(
-                            f"  Data looks clean after {elapsed_sec}s "
-                            f"\u2014 no other {slicer_label} values found. Proceeding."
-                        )
-                        break
-                    log.info(
-                        f"  [{elapsed_sec}s] Still waiting \u2014 "
-                        f"conflicting values present: {', '.join(conflicts)}"
-                    )
-                except Exception:
-                    pass
-
-            return self._verify_filter_on_screen(filter_value, f"{target_name}_{report_name}",
-                                                  other_values, slicer_label, verify_heading)
-
-        success = _attempt_once(final=False)
-        if not success:
-            # Verification (or selection) failed -- rather than moving on to
-            # the next target against a possibly stuck/blank report (wasting
-            # every subsequent attempt), hard-refresh the report and wait for
-            # it to actually render content again before trying ONE more time.
-            self._hard_refresh_report(report_url, page_name, date_from, date_to)
-            success = _attempt_once(final=True)
-
-        if not success:
+        log.info(f"  Setting filter: {filter_column} = {filter_value}")
+        if not self._apply_filter_via_pane(
+            filter_value, filter_column, report_url, slicer_label,
+            other_values=other_values, target_name=target_name, report_name=report_name,
+            verify_heading=verify_heading, page_name=page_name,
+            date_from=date_from, date_to=date_to,
+        ):
+            log.error(
+                f"  FILTER APPLY FAILED — {target_name}:\n"
+                f"  Could not set '{filter_column}' = '{filter_value}' in UI.\n"
+                f"  This report will NOT be attached."
+            )
             self._debug_screenshot(page, f"{target_name}_{report_name}")
             return None
+
+        # Confirm Date + Page haven't drifted before export -- read-only
+        # checks first, so the common case (nothing drifted) doesn't risk
+        # disturbing the state we just spent up to 3 attempts verifying.
+        # Only re-applies (and re-verifies the AOM filter afterward) if
+        # something actually doesn't match.
+        needs_reverify = False
+        if date_from and date_to:
+            actual_from, actual_to = self._read_date_field_values()
+            if actual_from != date_from or actual_to != date_to:
+                log.warning(
+                    f"  Date drifted before export (expected {date_from} -> {date_to}, "
+                    f"found {actual_from} -> {actual_to}) — re-applying."
+                )
+                self._set_date_filter(date_from, date_to)
+                needs_reverify = True
+
+        if page_name and not self._is_page_active(page_name):
+            log.warning(f"  Page drifted before export (expected '{page_name}') — re-selecting.")
+            self._select_report_page(page_name)
+            needs_reverify = True
+
+        if needs_reverify:
+            page.wait_for_timeout(2_000)
+            if not self._verify_filter_on_screen(filter_value, f"{target_name}_{report_name}",
+                                                  other_values, slicer_label, verify_heading):
+                log.error(
+                    f"  Re-verification after date/page correction failed for "
+                    f"{target_name} — skipping export."
+                )
+                self._debug_screenshot(page, f"{target_name}_{report_name}")
+                return None
 
         # Export
         safe_target = "".join(c if c.isalnum() or c in " _-" else "_" for c in target_name).strip().replace(" ", "_")
@@ -737,7 +715,7 @@ class PowerBIExporter:
             except Exception:
                 continue
 
-        # Not visible â€” click the toggle button
+        # Not visible — click the toggle button
         TOGGLE_SELECTORS = [
             '[aria-label="Open Filters pane"]',
             '[aria-label="Filters"]',
@@ -759,25 +737,16 @@ class PowerBIExporter:
         log.warning("  Could not confirm Filters pane is open — continuing anyway.")
         return False
 
-    def _set_date_filter(self, date_from: str, date_to: str) -> bool:
+    def _find_date_inputs(self):
         """
-        Set the Date range slicer's From/To fields. `date_from`/`date_to`
-        must already be resolved to the UI's expected display format
-        (M/D/YYYY, no leading zeros, e.g. "9/1/2026" -- see main.py's
-        resolve_date()).
-
-        NOTE: this is the least-tested part of the automation (no live
-        browser access to confirm Power BI's exact date-picker interaction
-        during development). Checks the displayed value after each field is
-        set and logs clearly either way, so a failure here is diagnosable
-        from the log alone without another live-debug round-trip.
+        Find the "Date" slicer's two From/To <input> elements (walk up from
+        the label text until we find an ancestor holding 2+ inputs). Shared
+        by _set_date_filter() and _read_date_field_values() so both use the
+        exact same lookup logic. Returns (from_input, to_input) ElementHandles,
+        or None if not found.
         """
         page = self._page
-        log.info(f"  Setting Date slicer: {date_from} -> {date_to}...")
-
         try:
-            # Find the "Date" slicer's container (walk up from the label text
-            # until we find an ancestor holding 2+ <input> fields).
             container_h = page.evaluate_handle(r"""
             () => {
                 const walker = document.createTreeWalker(
@@ -798,15 +767,81 @@ class PowerBIExporter:
             """)
             container = container_h.as_element()
             if not container:
+                return None
+            date_inputs = container.query_selector_all('input')
+            if len(date_inputs) < 2:
+                return None
+            return date_inputs[0], date_inputs[1]
+        except Exception:
+            return None
+
+    def _read_date_field_values(self):
+        """
+        Read the Date slicer's current From/To input values (read-only, no
+        interaction) -- used to check for drift before export without
+        risking disturbing an already-correct, already-verified state.
+        Returns (from_value, to_value), either of which may be None if the
+        fields couldn't be found/read.
+        """
+        date_inputs = self._find_date_inputs()
+        if not date_inputs:
+            return None, None
+        from_input, to_input = date_inputs
+        try:
+            return from_input.input_value(), to_input.input_value()
+        except Exception:
+            return None, None
+
+    def _is_page_active(self, page_name: str) -> bool:
+        """
+        Best-effort, read-only check for whether `page_name` is currently
+        the active page in the left Pages panel. Used to check for drift
+        before export. Returns False (triggering a re-select) whenever this
+        can't be determined confidently -- a harmless extra click is far
+        cheaper than silently exporting the wrong page.
+        """
+        page = self._page
+        try:
+            return bool(page.evaluate("""
+            (name) => {
+                const els = Array.from(document.querySelectorAll('*')).filter(
+                    el => el.children.length === 0 && (el.textContent || '').trim() === name
+                );
+                for (const el of els) {
+                    const item = el.closest('[role="option"], [role="tab"], li, [aria-selected]');
+                    if (!item) continue;
+                    if (item.getAttribute('aria-selected') === 'true') return true;
+                    if (/\\bselected\\b|\\bactive\\b|\\bcurrent\\b/i.test(item.className || '')) return true;
+                }
+                return false;
+            }
+            """, page_name))
+        except Exception:
+            return False
+
+    def _set_date_filter(self, date_from: str, date_to: str) -> bool:
+        """
+        Set the Date range slicer's From/To fields. `date_from`/`date_to`
+        must already be resolved to the UI's expected display format
+        (M/D/YYYY, no leading zeros, e.g. "9/1/2026" -- see main.py's
+        resolve_date()).
+
+        NOTE: this is the least-tested part of the automation (no live
+        browser access to confirm Power BI's exact date-picker interaction
+        during development). Checks the displayed value after each field is
+        set and logs clearly either way, so a failure here is diagnosable
+        from the log alone without another live-debug round-trip.
+        """
+        page = self._page
+        log.info(f"  Setting Date slicer: {date_from} -> {date_to}...")
+
+        try:
+            date_inputs = self._find_date_inputs()
+            if not date_inputs:
                 log.warning("  Date slicer container not found — skipping date filter.")
                 return False
 
-            date_inputs = container.query_selector_all('input')
-            if len(date_inputs) < 2:
-                log.warning(f"  Date slicer: expected 2 date inputs, found {len(date_inputs)} — skipping.")
-                return False
-
-            from_input, to_input = date_inputs[0], date_inputs[1]
+            from_input, to_input = date_inputs
 
             def _set_one(input_handle, value: str, label: str, attempt: int = 1) -> bool:
                 try:
@@ -1344,6 +1379,52 @@ class PowerBIExporter:
             page.wait_for_timeout(1_000)
             return False
 
+        # The virtualized list's scroll position carries over from whatever
+        # a PREVIOUS target's search/scroll left it at -- since we only ever
+        # scroll forward (PageDown), a target whose name is alphabetically
+        # EARLIER than wherever the list was left (e.g. processing
+        # "Bhrigunath Chaurasia" right after "Kamal Tiwari" left the list
+        # scrolled down near K) can never be reached by scrolling forward,
+        # and the alphabetical early-stop then (correctly, given a forward-
+        # only scroll) gives up immediately. Reset to the top of the list
+        # every time the dropdown opens, so every attempt starts from a
+        # known, consistent position regardless of prior targets.
+        try:
+            # Focus the list container first (same technique as the scroll
+            # fallback below) -- KEYBOARD-driven scrolling is what's proven
+            # to actually trigger Power BI's virtualized list to re-render
+            # (confirmed all session by every working "Found after N
+            # scrolls!" case, which all use PageDown). A direct `scrollTop`
+            # property write, tried previously, does NOT reliably trigger
+            # that re-render -- the position value changes but the visible
+            # rows silently don't, which is exactly what kept happening.
+            page.evaluate("""
+            () => {
+                const opt = document.querySelector('[role="option"]');
+                if (opt) {
+                    let viewport = opt.closest('.cdk-virtual-scroll-viewport, .scrollable-content, [role="listbox"]');
+                    if (viewport && viewport.focus) {
+                        viewport.setAttribute('tabindex', viewport.getAttribute('tabindex') || '0');
+                        viewport.focus();
+                    } else if (opt.focus) {
+                        opt.focus();
+                    }
+                }
+            }
+            """)
+            page.wait_for_timeout(200)
+            # Home jumps straight to the top in most virtualized lists.
+            page.keyboard.press('Home')
+            page.wait_for_timeout(400)
+            # Belt-and-suspenders: also press PageUp a generous number of
+            # times in case Home isn't supported by this specific widget --
+            # a harmless no-op if it's already at the top.
+            for _ in range(20):
+                page.keyboard.press('PageUp')
+                page.wait_for_timeout(150)
+        except Exception:
+            pass
+
         self._handle_identity_prompt()
 
         # ── 1. THE SEARCH STEP ──
@@ -1500,49 +1581,89 @@ class PowerBIExporter:
         return False
 
     def _apply_filter_via_pane(self, filter_email: str, filter_column: str, report_url: str = None,
-                                slicer_label: str = "AOM", reprepare_fn=None) -> bool:
+                                slicer_label: str = "AOM", other_values: list = None,
+                                target_name: str = "", report_name: str = "",
+                                verify_heading: str = None, page_name: str = None,
+                                date_from: str = None, date_to: str = None) -> bool:
         """
         Set the `slicer_label` filter through the Power BI UI (slicer on the
-        current page only). Assumes the slicer is on the first/current page.
+        current page only) AND confirm it actually took effect on screen --
+        selecting the right option in the dropdown doesn't guarantee the
+        report visuals caught up yet, so each attempt below ends with a
+        real verification, not just a successful click.
 
-        Runs the full 3-attempt cycle:
-          - Attempt 1: reset other slicers, try the slicer (search + scroll fallback).
-          - Attempt 2: same, in place, no reload.
-          - Attempt 3: only if 1 & 2 both failed — reload the report page once,
-            handle the identity prompt, re-open the Filters pane, re-apply the
-            page/date-range state via `reprepare_fn` (if given), reset other
-            slicers again, then try the slicer one last time.
-        Falls back to the Filters pane card if all 3 slicer attempts fail.
+        Runs the full 3-attempt cycle, where EACH attempt = reset other
+        slicers -> select (search + scroll fallback) -> smart-wait -> verify:
+          - Attempt 1: in place, no reload.
+          - Attempt 2: same, in place, no reload (a fresh reset+reselect+
+            verify, not just re-checking the same state -- a transient
+            report lag on attempt 1 is exactly what this catches).
+          - Attempt 3: only if 1 & 2 both failed -- reload the report page,
+            re-apply the page/date-range state, wait up to 90s for the
+            report to show real content again (same budget as the very
+            first load of a session, since a plain reload doesn't guarantee
+            Power BI is actually ready any faster the second time), THEN
+            reset other slicers and try one last time.
+        Falls back to the Filters pane card (unverified) if all 3 fail.
         """
         page = self._page
+        other_values = other_values or []
+
+        def _select_wait_verify() -> bool:
+            self._reset_other_slicers(slicer_label)
+            if not self._try_slicer(filter_email, slicer_label):
+                return False
+
+            # Some reports take a while to actually re-filter their visuals
+            # after the slicer selection lands -- checking immediately is
+            # near-guaranteed to catch the PREVIOUS target's still-displayed
+            # data (a genuine data conflict, not a real failure), so ALWAYS
+            # wait before every check, the first one included, then retry
+            # every 15s up to 90s total before giving up on this attempt.
+            VERIFY_MAX_WAIT_SEC = 90
+            VERIFY_POLL_SEC     = 15
+            elapsed_sec         = 0
+
+            while True:
+                page.wait_for_timeout(VERIFY_POLL_SEC * 1_000)
+                elapsed_sec += VERIFY_POLL_SEC
+                is_last_check = elapsed_sec >= VERIFY_MAX_WAIT_SEC
+                if self._verify_filter_on_screen(filter_email, f"{target_name}_{report_name}",
+                                                  other_values, slicer_label, verify_heading,
+                                                  quiet=not is_last_check):
+                    return True
+                if is_last_check:
+                    return False
 
         # Attempts 1 & 2: in place, no reload.
         for attempt in (1, 2):
             log.info(f"  {slicer_label} slicer: attempt {attempt}/3 for '{filter_email}'...")
-            self._reset_other_slicers(slicer_label)
-            if self._try_slicer(filter_email, slicer_label):
+            if _select_wait_verify():
                 return True
 
-        # Attempt 3: hard reset (reload) then one more try.
+        # Attempt 3: hard reset (reload), wait for real content, then one more try.
         if report_url:
             log.warning(f"  {slicer_label} slicer: attempts 1 & 2 failed. Reloading report for attempt 3/3...")
             page.wait_for_timeout(2_000)
             page.goto(report_url, timeout=NAV_TIMEOUT, wait_until="domcontentloaded")
             page.wait_for_timeout(5_000)
             self._handle_identity_prompt()
+            self._handle_identity_prompt()
             self._open_filters_pane()
             page.wait_for_timeout(1_500)
-            if reprepare_fn is not None:
-                # Re-apply page selection + date range lost by the reload —
-                # otherwise remaining targets in this report would silently
-                # export the wrong page/date after a mid-loop reload.
-                try:
-                    reprepare_fn()
-                except Exception as e:
-                    log.warning(f"  reprepare_fn failed after reload: {e}")
-            self._reset_other_slicers(slicer_label)
+            if date_from and date_to:
+                self._set_date_filter(date_from, date_to)
+            if page_name:
+                self._select_report_page(page_name)
+            self._loaded_report_state = (report_url, page_name, date_from, date_to)
+
+            # Same 90s content-wait budget as the very first load of the
+            # session -- a reload doesn't mean Power BI is ready any faster.
+            if not self._wait_for_report_content(max_wait_sec=90, poll_sec=3):
+                log.warning("  Report still appears blank after reload wait for attempt 3 — proceeding anyway.")
+
             log.info(f"  {slicer_label} slicer: attempt 3/3 for '{filter_email}' (after reload)...")
-            if self._try_slicer(filter_email, slicer_label):
+            if _select_wait_verify():
                 return True
         else:
             log.warning("  No report_url available for attempt 3 reload — skipping to Filters pane fallback.")
@@ -1600,42 +1721,6 @@ class PowerBIExporter:
         )
         return False
 
-    def _hard_refresh_report(self, report_url: str, page_name: str,
-                              date_from: str, date_to: str) -> bool:
-        """
-        Force-reload the report page and wait for it to genuinely render
-        data again, not just navigate. Used when a target's filter
-        selection and/or verification failed -- a plain slicer retry can't
-        recover from the report itself having gone blank/stuck (which does
-        happen after enough slicer interaction), only a real refresh can.
-
-        Returns True if real content was detected before giving up on the
-        wait (best-effort either way -- the caller retries regardless).
-        """
-        page = self._page
-        log.warning("  Report appears stuck/blank — hard refreshing and waiting for it to load...")
-        page.goto(report_url, timeout=NAV_TIMEOUT, wait_until="domcontentloaded")
-        page.wait_for_timeout(6_000)
-        self._handle_identity_prompt()
-        self._handle_identity_prompt()
-        self._open_filters_pane()
-        page.wait_for_timeout(1_500)
-
-        if date_from and date_to:
-            self._set_date_filter(date_from, date_to)
-        if page_name:
-            self._select_report_page(page_name)
-        self._loaded_report_state = (report_url, page_name, date_from, date_to)
-
-        # Wait for the report to show SOME real visual content before
-        # letting the caller retry, rather than immediately retrying
-        # against a still-blank page.
-        if self._wait_for_report_content(max_wait_sec=20, poll_sec=2):
-            log.info("  Report content detected after refresh.")
-            return True
-        log.warning("  Report still appears blank after refresh wait — proceeding anyway.")
-        return False
-
     def _wait_for_report_content(self, max_wait_sec: int = 90, poll_sec: int = 3) -> bool:
         """
         Poll up to `max_wait_sec` for the report to show SOME real rendered
@@ -1671,23 +1756,28 @@ class PowerBIExporter:
 
     def _verify_filter_on_screen(self, filter_email: str, aom_name: str,
                                   other_emails: list, slicer_label: str = "AOM",
-                                  verify_heading: str = None) -> bool:
+                                  verify_heading: str = None, quiet: bool = False) -> bool:
         """
         Screenshot the current report state and read all visible page text.
 
         Checks:
-          1. Expected AOM email IS visible in the data â†’ proves filter is active
-          2. No OTHER AOM's email is visible in the data â†’ proves no wrong data
+          1. Expected AOM email IS visible in the data → proves filter is active
+          2. No OTHER AOM's email is visible in the data → proves no wrong data
 
-        Returns True  â†’ safe to export
-        Returns False â†’ conflict or cannot verify â†’ email is NOT sent, counts as FAIL
-        Reason is always logged explicitly.
+        Returns True  → safe to export
+        Returns False → conflict or cannot verify → email is NOT sent, counts as FAIL
+        Reason is always logged explicitly, EXCEPT the "not found yet" case
+        (not a real conflict) when `quiet=True` -- used for the interim
+        retries of the 90s/15s wait-for-report-to-catch-up loop, so a report
+        that just needs another 15-30s doesn't look like a hard failure in
+        the log at every intermediate check. A genuine data conflict is
+        always logged loudly regardless of `quiet`.
         """
         page = self._page
         page.wait_for_timeout(3_000)   # let all visuals fully render
 
         # Always take a screenshot (audit trail + debugging)
-        # Strip + replace spaces: "Ritesh Soni " â†’ "verify_Ritesh_Soni.png"
+        # Strip + replace spaces: "Ritesh Soni " → "verify_Ritesh_Soni.png"
         # Windows rejects filenames ending with space (Errno 22).
         safe = "".join(c if c.isalnum() or c in " _-" else "_" for c in aom_name.strip())
         safe = safe.replace(" ", "_")
@@ -1701,7 +1791,7 @@ class PowerBIExporter:
             log.warning(f"  Screenshot failed: {e}")
 
         # Read all visible text from the page
-        # First close any open slicer dropdown â€” unchecked options appear as text
+        # First close any open slicer dropdown — unchecked options appear as text
         # and would be mistaken for conflicting data if not dismissed first.
         try:
             page.keyboard.press("Escape")
@@ -1727,9 +1817,9 @@ class PowerBIExporter:
             page_text = page.evaluate(self._scoped_verify_text_js(slicer_label, verify_heading))
         except Exception as e:
             log.error(
-                f"  VERIFICATION FAILED â€” {aom_name}:\n"
+                f"  VERIFICATION FAILED — {aom_name}:\n"
                 f"  Reason: Cannot read page content ({e})\n"
-                f"  Email will NOT be sent â€” cannot confirm data is correct."
+                f"  Email will NOT be sent — cannot confirm data is correct."
             )
             return False
 
@@ -1740,29 +1830,40 @@ class PowerBIExporter:
         # Check 1: any OTHER AOM's email visible in the report data?
         conflicting = [e for e in others_lower if e in page_text_lower]
         if conflicting:
-            log.error(
-                f"\n"
-                f"  â•”â•â• DATA CONFLICT â€” EMAIL WILL NOT BE SENT â•â•â•â•â•â•â•—\n"
-                f"  â•‘  AOM              : {aom_name}\n"
-                f"  â•‘  Expected filter  : {filter_email}\n"
-                f"  â•‘  Conflicting data : {', '.join(set(conflicting))}\n"
-                f"  â•‘  Report contains another AOM's data. Aborting.\n"
-                f"  â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•"
-            )
+            if quiet:
+                log.info(
+                    f"  Still detecting {sorted(set(conflicting))} in the data "
+                    f"for {aom_name} — likely stale from the previous target, rechecking in 15s..."
+                )
+            else:
+                log.error(
+                    "\n"
+                    f"  ╔══ DATA CONFLICT — EMAIL WILL NOT BE SENT ══════╗\n"
+                    f"  ║  AOM              : {aom_name}\n"
+                    f"  ║  Expected filter  : {filter_email}\n"
+                    f"  ║  Conflicting data : {', '.join(set(conflicting))}\n"
+                    f"  ║  Report contains another AOM's data. Aborting.\n"
+                    "  ╚" + "═" * 50 + "╝"
+                )
             return False
+
 
         # Check 2: the expected email must be visible (proves filter worked)
         if expected_lower not in page_text_lower:
-            log.error(
-                f"  VERIFICATION FAILED â€” {aom_name}:\n"
+            msg = (
+                f"  VERIFICATION {'not yet passing' if quiet else 'FAILED'} — {aom_name}:\n"
                 f"  Reason: '{filter_email}' not found in visible report data.\n"
-                f"  The filter may not have been applied or data is not loaded.\n"
-                f"  Email will NOT be sent."
+                f"  The filter may not have been applied or data is not loaded yet."
+                + ("" if quiet else "\n  Email will NOT be sent.")
             )
+            if quiet:
+                log.info(msg)
+            else:
+                log.error(msg)
             return False
 
         log.info(
-            f"  Data verification âœ“ â€” only {filter_email} found.\n"
+            f"  Data verification ✓ — only {filter_email} found.\n"
             f"  No conflicting AOM data. Safe to export."
         )
         return True
