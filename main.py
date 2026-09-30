@@ -8,17 +8,31 @@ Usage:
 Flow:
     1. Wait until SEND_AT (skipped with --now)
     2. Prompt for Power BI email + password in terminal
-    3. For each target group (AOM, Cluster Manager, ...), Phase 1 gathers
-       PDFs for every target. Targets that got every report are emailed
-       immediately; targets missing at least one report are held (NOT
-       emailed yet).
-    4. If any targets are held (across any group), ONE combined prompt asks:
-         1. Send partial mail now (whatever data is available)
-         2. Run Phase 2 to try to complete them first
-       Choosing 2 retries held targets (Phase 2, then Phase 3 automatically
-       if still incomplete) and only then sends -- so nobody gets more than
-       one email.
-    5. Print per-phase + final consolidated summary per group
+    3. Phase 1 gathers one PDF per (target, report) pair, for every group.
+       Every pair is individually classified as:
+         - success   : found, no conflicting name -- always included.
+         - Group A   : not found / unstable across the 2 attempts, OR
+                       found but with 3+ conflicting names (too messy to
+                       be a plausible coincidence) -- needs RETRY or DROP.
+         - Group B   : found, with exactly 1-2 conflicting names (a
+                       plausible same-name-different-designation
+                       coincidence) -- needs GO AHEAD or DROP.
+       A target whose every report is a clean "success" is emailed
+       immediately after Phase 1 -- nothing to review.
+    4. For everything else, Group A and Group B are shown per (target,
+       report) pair, not per target -- so a person present in 4 of 5
+       reports only gets asked about the 1 that actually needs a decision.
+       RETRY re-runs just that (target, report) pair (Phase 2, fresh
+       login), then the SAME classifier is applied to the new result:
+       success -> included; Group B -> one more go-ahead/drop question;
+       Group A again -> excluded, final, no further retry offered.
+       DROP only excludes that one report's attachment -- every other
+       report already resolved for that person is unaffected.
+    5. Final send: every target with at least one included report gets
+       one email with whatever PDFs are included (full or partial).
+       Zero included reports -> no email, listed as needing manual send.
+    6. Every phase prints a per-target/per-report status table, plus a
+       final consolidated summary per group.
 """
 import os
 import sys
@@ -48,6 +62,12 @@ logging.basicConfig(
     ],
 )
 log = logging.getLogger(__name__)
+
+# 1-2 distinct colliding names on a "conflict" pair is treated as a
+# plausible same-name-different-designation coincidence (Group B, a human
+# eyeball call); 3+ is treated as too messy to be ordinary chance (Group A,
+# retry-or-drop instead).
+MAX_OTHER_CONFLICTS_FOR_GROUP_B = 2
 
 
 # == Helpers ===================================================================
@@ -195,158 +215,216 @@ def cleanup_pdfs():
                 pass
 
 
-def print_phase_summary(phase_num: int, complete: list, incomplete: list):
+def classify_pair(status: str, conflicts: list) -> str:
     """
-    Print a formatted summary block for a single gather phase.
-    NOTE: "complete"/"incomplete" describe whether a target got every
-    report in this phase -- NOT whether an email was sent (sending is
-    decoupled from gathering; see gather_phase()/send_for_targets()).
+    Classify one (target, report)'s verification outcome into
+    "success" | "A" | "B":
+      - success (found, 0 conflicts)                      -> "success"
+      - not_found / dual (unstable across the 2 attempts)  -> "A"
+      - conflict, 1-2 distinct other names                  -> "B"
+      - conflict, 3+ distinct other names                   -> "A"
     """
-    w = 52
-    log.info("")
-    log.info("╔" + "═" * w + "╗")
-    log.info(f"║  PHASE {phase_num} SUMMARY" + " " * (w - 16) + "║")
-    log.info("╠" + "═" * w + "╣")
-
-    if complete:
-        names = ", ".join(complete)
-        log.info(f"║  ✅ Complete ({len(complete):>2}): {names[:w-18]}" +
-                 (" ..." if len(names) > w - 18 else "") +
-                 " " * max(0, w - 18 - min(len(names), w - 18)) + "  ║")
-        # overflow lines
-        remaining = names[w - 18:]
-        while remaining:
-            chunk = remaining[:w - 6]
-            log.info(f"║      {chunk:<{w-6}}  ║")
-            remaining = remaining[w - 6:]
-    else:
-        log.info(f"║  ✅ Complete ( 0): —" + " " * (w - 22) + "  ║")
-
-    if incomplete:
-        names = ", ".join(incomplete)
-        log.info(f"║  ⏳ Incomplete({len(incomplete):>2}): {names[:w-18]}" +
-                 (" ..." if len(names) > w - 18 else "") +
-                 " " * max(0, w - 18 - min(len(names), w - 18)) + "  ║")
-        remaining = names[w - 18:]
-        while remaining:
-            chunk = remaining[:w - 6]
-            log.info(f"║      {chunk:<{w-6}}  ║")
-            remaining = remaining[w - 6:]
-    else:
-        log.info(f"║  ⏳ Incomplete( 0): —" + " " * (w - 22) + "  ║")
-
-    log.info("╚" + "═" * w + "╝")
-    log.info("")
-
-
-def print_final_summary(group_name: str, total: int, sent: list, failed: list):
-    """Print the consolidated final summary (actual email dispatch) for one group."""
-    w = 52
-
-    log.info("")
-    log.info("╔" + "═" * w + "╗")
-    log.info(f"║  FINAL SUMMARY — {group_name}" + " " * max(0, w - 17 - len(group_name)) + "║")
-    log.info("╠" + "═" * w + "╣")
-    log.info(f"║  Total targets  : {total:<33}║")
-    log.info(f"║  ✅ Emails sent : {len(sent):<33}║")
-    log.info(f"║  ❌ Manual reqd : {len(failed):<33}║")
-
-    if failed:
-        log.info("╠" + "═" * w + "╣")
-        log.info(f"║  Please send these manually:" + " " * (w - 28) + "║")
-        for name in failed:
-            log.info(f"║    → {name:<{w-6}}║")
-    log.info("╚" + "═" * w + "╝")
-    log.info("")
+    if status == "success":
+        return "success"
+    if status == "conflict":
+        return "B" if len(conflicts) <= MAX_OTHER_CONFLICTS_FOR_GROUP_B else "A"
+    return "A"  # not_found, dual
 
 
 # == Core export loop ==========================================================
 
-def gather_phase(exporter: "PowerBIExporter", group: dict, targets: list,
-                  all_group_targets: list, today: str, phase_num: int) -> dict:
+def gather_for_pairs(exporter: "PowerBIExporter", group: dict, pairs: list,
+                      all_group_targets: list, today: str, label: str) -> dict:
     """
-    Gather PDFs for the given targets within one group -- does NOT send any
-    email (sending is a separate, deliberate step; see send_for_targets()).
+    Run export_for_target for exactly the given (target, report_cfg) pairs,
+    grouped by report so each report is only prepare_report()'d once --
+    used both for Phase 1 (every target x every report) and for a scoped
+    retry (only the specific failed (target, report) pairs).
 
-    Report-outer, target-inner: each report in the group is prepared
-    (navigated to, date range + page set) exactly ONCE, then every target
-    is looped applying just the slicer filter -- reusing the existing
-    3-attempt search+scroll engine unchanged.
-
-    Returns {target_name: {"pdfs": [...], "complete": bool}}, where
-    "complete" means the target got a PDF from EVERY report in the group.
+    Returns {(target_name, report_name): {"pdf":, "status":, "conflicts":}}.
     """
     slicer_label = group["slicer_label"]
-    reports      = group["reports"]
 
-    pdfs_by_target        = defaultdict(list)
-    report_success_count  = defaultdict(int)
+    by_report = defaultdict(list)
+    report_cfg_by_name = {}
+    for target, report_cfg in pairs:
+        by_report[report_cfg["name"]].append(target)
+        report_cfg_by_name[report_cfg["name"]] = report_cfg
 
-    for report_cfg in reports:
-        report_name = report_cfg["name"]
-
+    results = {}
+    for report_name, targets_for_report in by_report.items():
+        report_cfg = report_cfg_by_name[report_name]
         resolved_cfg = dict(report_cfg)
         resolved_cfg["date_from"] = resolve_date(report_cfg.get("date_from"))
         resolved_cfg["date_to"]   = resolve_date(report_cfg.get("date_to"))
 
-        log.info(f"\nPhase {phase_num} [{group['group_name']}] — Preparing report: {report_name}")
+        log.info(f"\n{label} [{group['group_name']}] -- Preparing report: {report_name}")
         try:
             exporter.prepare_report(resolved_cfg, slicer_label)
         except Exception as e:
             log.error(f"  Failed to prepare report '{report_name}': {e} -- skipping this report for all targets.")
+            for target in targets_for_report:
+                results[(target["name"], report_name)] = {"pdf": None, "status": "not_found", "conflicts": []}
             continue
 
-        for target in targets:
+        for target in targets_for_report:
             other_targets = [t for t in all_group_targets if t["name"] != target["name"]]
             log.info(f"  -> Exporting for: {target['name']}")
-
-            pdf = exporter.export_for_target(target, resolved_cfg, slicer_label, other_targets, today)
+            pdf, status, conflicts = exporter.export_for_target(
+                target, resolved_cfg, slicer_label, other_targets, today
+            )
+            results[(target["name"], report_name)] = {"pdf": pdf, "status": status, "conflicts": conflicts}
             if pdf:
-                pdfs_by_target[target["name"]].append(pdf)
-                report_success_count[target["name"]] += 1
+                log.info(f"  [{target['name']} / {report_name}] result: {status} (PDF saved)")
             else:
-                log.error(f"  Export failed for report '{report_name}' -- skipping this attachment for {target['name']}")
+                log.error(f"  [{target['name']} / {report_name}] result: {status} (no PDF)")
 
-    result = {}
-    for target in targets:
-        name = target["name"]
-        result[name] = {
-            "pdfs":     pdfs_by_target.get(name, []),
-            "complete": report_success_count.get(name, 0) == len(reports),
-        }
-    return result
+    return results
 
 
-def send_for_targets(mailer: "Mailer", targets_by_name: dict, gather_result: dict,
-                      today: str, sent_names: list, failed_names: list) -> None:
+def print_status_table(title: str, rows: list) -> None:
     """
-    Send one email per target present in `gather_result`, using whatever
-    PDFs it has (full or partial). Targets with zero PDFs get no email and
-    are recorded as failed instead.
-
-    `sent_names`/`failed_names` are mutated in place so callers can
-    accumulate results across multiple calls (immediate sends for
-    fully-complete targets at each phase, plus a final send for
-    partial/terminal targets) into one running tally per group.
+    rows: list of (target_name, report_name, status_label) already-
+    formatted strings -- a simple, correctness-first table (layout doesn't
+    matter, per-row data does).
     """
-    for name, info in gather_result.items():
-        pdfs   = info["pdfs"]
-        target = targets_by_name[name]
+    log.info("")
+    log.info(f"-- {title} --")
+    if not rows:
+        log.info("  (none)")
+    for target_name, report_name, status_label in rows:
+        log.info(f"  {target_name:<30} | {report_name:<30} | {status_label}")
+    log.info("")
 
-        if not pdfs:
-            log.error(f"  All exports failed -- skipping email for {name}")
-            failed_names.append(name)
+
+def prompt_group_a(entries: list) -> dict:
+    """
+    entries: list of (target_name, report_name, reason) for Group A pairs.
+    Returns {(target_name, report_name): "retry"|"drop"}.
+    """
+    decisions = {}
+    if not entries:
+        return decisions
+    print("\n  Group A -- not found / unstable even after all attempts:")
+    for target_name, report_name, reason in entries:
+        ans = None
+        while ans not in ("1", "2"):
+            print(f"\n    {target_name}  [{report_name}]  ({reason})")
+            print("      1. RETRY (checked manually, it exists)")
+            print("      2. DROP (does not exist for this report)")
+            ans = input("    Choice [1/2]: ").strip()
+        decisions[(target_name, report_name)] = "retry" if ans == "1" else "drop"
+    return decisions
+
+
+def prompt_group_b(entries: list) -> dict:
+    """
+    entries: list of (target_name, report_name, conflicts) for Group B pairs.
+    Returns {(target_name, report_name): "send"|"drop"}.
+    """
+    decisions = {}
+    if not entries:
+        return decisions
+    print("\n  Group B -- found, but name conflict(s) detected:")
+    for target_name, report_name, conflicts in entries:
+        ans = None
+        while ans not in ("1", "2"):
+            print(f"\n    {target_name}  [{report_name}]  (also seen: {', '.join(conflicts)})")
+            print("      1. GO AHEAD, SEND MAIL")
+            print("      2. DROP (this report only -- other reports for this person are unaffected)")
+            ans = input("    Choice [1/2]: ").strip()
+        decisions[(target_name, report_name)] = "send" if ans == "1" else "drop"
+    return decisions
+
+
+def send_final(mailer: "Mailer", targets_by_name: dict, pair_state: dict,
+               reports_by_target: dict, today: str,
+               sent_names: list, failed_names: list, dropped_pairs: list,
+               manual_pairs: list) -> None:
+    """
+    For each target in `reports_by_target`, send whatever of its reports
+    are currently included (has a PDF, not excluded). Zero included
+    reports -> no email, recorded as failed/manual instead.
+
+    `pair_state`: {(target_name, report_name): {"pdf":, "status":,
+    "conflicts":, "excluded": bool, "manual": bool}}. "manual" is only
+    ever True for a Group A pair that was RETRIED and still didn't
+    resolve -- a deliberate DROP (Group A "does not exist" or Group B
+    "drop this report") is a resolved decision, not something needing
+    follow-up, so it's reported separately from a genuine unresolved
+    failure.
+    """
+    for target_name, report_names in reports_by_target.items():
+        included_pdfs = []
+        status_lines  = []
+        for report_name in report_names:
+            st = pair_state.get((target_name, report_name))
+            if not st:
+                continue
+            if st["pdf"] and not st["excluded"]:
+                included_pdfs.append(st["pdf"])
+                status_lines.append(f"{report_name}: SENT")
+            elif st["pdf"] and st["excluded"]:
+                status_lines.append(f"{report_name}: DROPPED (by choice)")
+                dropped_pairs.append((target_name, report_name))
+            elif st.get("manual"):
+                status_lines.append(f"{report_name}: FAILED (manual check needed)")
+                manual_pairs.append((target_name, report_name))
+            else:
+                status_lines.append(f"{report_name}: DROPPED (confirmed not applicable)")
+                dropped_pairs.append((target_name, report_name))
+
+        log.info(f"  {target_name}: " + "; ".join(status_lines))
+
+        if not included_pdfs:
+            log.error(f"  All exports failed/dropped -- skipping email for {target_name}")
+            failed_names.append(target_name)
             continue
 
+        target = targets_by_name[target_name]
         try:
-            subject = EMAIL_SUBJECT.format(aom_name=name, date=today)
-            body    = EMAIL_BODY.format(aom_name=name, date=today)
-            mailer.send(target["delivery_email"], subject, body, attachments=pdfs)
-            log.info(f"  Email sent to {target['delivery_email']} with {len(pdfs)} attachment(s)")
-            sent_names.append(name)
+            subject = EMAIL_SUBJECT.format(aom_name=target_name, date=today)
+            body    = EMAIL_BODY.format(aom_name=target_name, date=today)
+            mailer.send(target["delivery_email"], subject, body, attachments=included_pdfs)
+            log.info(
+                f"  Email sent to {target['delivery_email']} with "
+                f"{len(included_pdfs)}/{len(report_names)} attachment(s)"
+            )
+            sent_names.append(target_name)
         except Exception as e:
-            log.error(f"  Email failed for {name}: {e}")
-            failed_names.append(name)
+            log.error(f"  Email failed for {target_name}: {e}")
+            failed_names.append(target_name)
+
+
+def print_final_summary(group_name: str, total: int, sent: list, failed: list,
+                         dropped_pairs: list, manual_pairs: list) -> None:
+    """Print the consolidated final summary (actual email dispatch) for one group."""
+    w = 52
+    log.info("")
+    log.info("=" * w)
+    log.info(f"FINAL SUMMARY -- {group_name}")
+    log.info("=" * w)
+    log.info(f"Total targets        : {total}")
+    log.info(f"Emails sent           : {len(sent)}")
+    log.info(f"No email at all       : {len(failed)}")
+    log.info(f"Reports dropped       : {len(dropped_pairs)}")
+    log.info(f"Reports needing manual: {len(manual_pairs)}")
+    if failed:
+        log.info("No email was sent at all for these -- please handle manually:")
+        for name in failed:
+            log.info(f"  -> {name}")
+    if manual_pairs:
+        log.info("Retried and still unresolved -- these specific reports need a manual check")
+        log.info("(the rest of that person's mail, if any, was still sent):")
+        for name, report in manual_pairs:
+            log.info(f"  -> {name} / {report}")
+    if dropped_pairs:
+        log.info("Resolved by decision (confirmed not applicable, or deliberately dropped --")
+        log.info("no follow-up needed; the rest of that person's mail, if any, was still sent):")
+        for name, report in dropped_pairs:
+            log.info(f"  -> {name} / {report}")
+    log.info("=" * w)
+    log.info("")
 
 
 # == Main ======================================================================
@@ -384,127 +462,163 @@ def main():
         for t in targets:
             log.info(f"  - {t['name']} | send to: {t['delivery_email']}")
 
-    # Running per-group tallies of what actually got emailed vs. needs manual
-    # follow-up -- built up across however many phases each group goes through.
-    sent_by_group   = {g["group_name"]: [] for g in TARGET_GROUPS}
-    failed_by_group = {g["group_name"]: [] for g in TARGET_GROUPS}
-    # Targets still missing at least one report after Phase 1, held (NOT
-    # emailed yet) until we know whether Phase 2 will run.
-    pending_by_group     = {}
-    phase1_result_by_group = {}
+    sent_by_group    = {g["group_name"]: [] for g in TARGET_GROUPS}
+    failed_by_group  = {g["group_name"]: [] for g in TARGET_GROUPS}
+    dropped_by_group = {g["group_name"]: [] for g in TARGET_GROUPS}
+    manual_by_group  = {g["group_name"]: [] for g in TARGET_GROUPS}
 
     with PowerBIExporter(pbi_email, pbi_password) as exporter:
 
-        # ── Phase 1: every group, back-to-back ──────────────────────────────
         for group in TARGET_GROUPS:
             gname   = group["group_name"]
             targets = group_targets[gname]
+            reports = group["reports"]
             if not targets:
                 log.info(f"\n  Group '{gname}': 0 targets loaded -- skipping.")
                 continue
 
             log.info("\n" + "=" * 55)
-            log.info(f"  PHASE 1 [{gname}] — Processing all targets")
+            log.info(f"  PHASE 1 [{gname}] -- Processing all targets")
             log.info("=" * 55)
-            result = gather_phase(exporter, group, targets, targets, target_date, phase_num=1)
-            complete_names   = [n for n, i in result.items() if i["complete"]]
-            incomplete_names = [n for n, i in result.items() if not i["complete"]]
-            print_phase_summary(1, complete_names, incomplete_names)
-            phase1_result_by_group[gname] = result
 
-            # Complete targets have nothing left to decide -- send now.
-            send_for_targets(
-                mailer, group_targets_by_name[gname],
-                {n: result[n] for n in complete_names},
-                target_date, sent_by_group[gname], failed_by_group[gname]
-            )
-            pending_by_group[gname] = incomplete_names
+            reports_by_target = {t["name"]: [r["name"] for r in reports] for t in targets}
+            all_pairs   = [(t, r) for t in targets for r in reports]
+            pair_state  = {}   # (target_name, report_name) -> {pdf, status, conflicts, excluded}
 
-        # ── Decide what to do with incomplete targets, across ALL groups ────
-        total_pending  = sum(len(v) for v in pending_by_group.values())
-        pending_groups = sum(1 for v in pending_by_group.values() if v)
+            result = gather_for_pairs(exporter, group, all_pairs, targets, target_date, "PHASE 1")
+            for key, info in result.items():
+                pair_state[key] = {**info, "excluded": (info["status"] != "success"), "manual": False}
 
-        if total_pending:
-            print(f"\n  {total_pending} target(s) across {pending_groups} group(s) are incomplete (missing at least one report).")
-            choice = None
-            while choice not in ("1", "2"):
-                print("\n  What would you like to do?")
-                print("    1. Send partial mail now (whatever data is available)")
-                print("    2. Run Phase 2 to try to complete them first")
-                choice = input("\n  Choice [1/2]: ").strip()
+            rows = [
+                (tname, rname,
+                 st["status"] + (f" (conflicts: {st['conflicts']})" if st["conflicts"] else ""))
+                for (tname, rname), st in sorted(pair_state.items())
+            ]
+            print_status_table(f"PHASE 1 RESULTS [{gname}] (per target / report)", rows)
 
-            if choice == "1":
-                log.info("  Sending partial mail for incomplete targets (no retry requested).")
-                for group in TARGET_GROUPS:
-                    gname = group["group_name"]
-                    pending_names = pending_by_group.get(gname) or []
-                    if not pending_names:
+            # Targets fully clean across every report -- send now, nothing to review.
+            clean_targets = [
+                tname for tname, rnames in reports_by_target.items()
+                if all(pair_state[(tname, rn)]["status"] == "success" for rn in rnames)
+            ]
+            if clean_targets:
+                send_final(
+                    mailer, group_targets_by_name[gname], pair_state,
+                    {t: reports_by_target[t] for t in clean_targets},
+                    target_date, sent_by_group[gname], failed_by_group[gname],
+                    dropped_by_group[gname], manual_by_group[gname]
+                )
+
+            review_targets = [t for t in reports_by_target if t not in clean_targets]
+            if not review_targets:
+                log.info(f"  Group '{gname}': Phase 1 achieved 100% clean success -- nothing to review.")
+                continue
+
+            # -- Build Group A / Group B entries from whatever isn't clean --
+            group_a_entries = []
+            group_b_entries = []
+            for tname in review_targets:
+                for rname in reports_by_target[tname]:
+                    st = pair_state[(tname, rname)]
+                    if st["status"] == "success":
                         continue
-                    result = phase1_result_by_group[gname]
-                    send_for_targets(
-                        mailer, group_targets_by_name[gname],
-                        {n: result[n] for n in pending_names},
-                        target_date, sent_by_group[gname], failed_by_group[gname]
-                    )
-            else:
-                # ── Phase 2: retry pending targets, per group ────────────────
-                for group in TARGET_GROUPS:
-                    gname = group["group_name"]
-                    pending_names = pending_by_group.get(gname) or []
-                    if not pending_names:
-                        continue
-
-                    targets_by_name = group_targets_by_name[gname]
-                    all_targets     = group_targets[gname]
-                    retry_targets   = [targets_by_name[n] for n in pending_names]
-
-                    log.info("\n" + "=" * 55)
-                    log.info(f"  PHASE 2 [{gname}] — Retrying incomplete targets")
-                    log.info("=" * 55)
-                    log.info("  Re-logging in for a fresh session before Phase 2...")
-                    exporter.relogin()
-                    result2 = gather_phase(exporter, group, retry_targets, all_targets, target_date, phase_num=2)
-                    complete2   = [n for n, i in result2.items() if i["complete"]]
-                    incomplete2 = [n for n, i in result2.items() if not i["complete"]]
-                    print_phase_summary(2, complete2, incomplete2)
-
-                    # Newly-complete targets have nothing left to decide -- send now.
-                    send_for_targets(
-                        mailer, targets_by_name, {n: result2[n] for n in complete2},
-                        target_date, sent_by_group[gname], failed_by_group[gname]
-                    )
-
-                    if incomplete2:
-                        # ── Phase 3: final automatic retry, then send everyone
-                        # remaining regardless of completeness -- terminal, no
-                        # further phase to hold out for.
-                        log.info("\n" + "=" * 55)
-                        log.info(f"  PHASE 3 [{gname}] — Final retry (automatic)")
-                        log.info("=" * 55)
-                        log.info("  Re-logging in for a fresh session before Phase 3...")
-                        exporter.relogin()
-                        retry_targets3 = [targets_by_name[n] for n in incomplete2]
-                        result3 = gather_phase(exporter, group, retry_targets3, all_targets, target_date, phase_num=3)
-                        complete3   = [n for n, i in result3.items() if i["complete"]]
-                        incomplete3 = [n for n, i in result3.items() if not i["complete"]]
-                        print_phase_summary(3, complete3, incomplete3)
-                        send_for_targets(
-                            mailer, targets_by_name, result3,
-                            target_date, sent_by_group[gname], failed_by_group[gname]
-                        )
+                    cls = classify_pair(st["status"], st["conflicts"])
+                    if cls == "A":
+                        if st["status"] == "conflict":
+                            reason = (
+                                f"{len(st['conflicts'])} conflicting names "
+                                f"({', '.join(st['conflicts'])}) -- too many to be a plausible coincidence"
+                            )
+                        elif st["status"] == "dual":
+                            reason = "unstable -- found on one attempt, not on the other"
+                        else:
+                            reason = "not found in the slicer"
+                        group_a_entries.append((tname, rname, reason))
                     else:
-                        log.info(f"  Group '{gname}': Phase 2 achieved 100% success — Phase 3 not needed.")
-        else:
-            log.info("  Phase 1 achieved 100% success across all groups — nothing pending.")
+                        group_b_entries.append((tname, rname, st["conflicts"]))
 
-    # ── Cleanup + final summary (one block per group) ────────────────────────
+            print(
+                f"\n  [{gname}] Review needed: {len(group_a_entries)} Group A pair(s), "
+                f"{len(group_b_entries)} Group B pair(s)."
+            )
+            a_decisions = prompt_group_a(group_a_entries)
+            b_decisions = prompt_group_b(group_b_entries)
+
+            for key, decision in b_decisions.items():
+                pair_state[key]["excluded"] = (decision == "drop")
+            for key, decision in a_decisions.items():
+                if decision == "drop":
+                    pair_state[key]["excluded"] = True
+
+            retry_keys = [key for key, d in a_decisions.items() if d == "retry"]
+
+            if retry_keys:
+                log.info("\n" + "=" * 55)
+                log.info(f"  PHASE 2 [{gname}] -- Retrying user-confirmed pairs")
+                log.info("=" * 55)
+                log.info("  Re-logging in for a fresh session before Phase 2...")
+                exporter.relogin()
+
+                reports_by_name = {r["name"]: r for r in reports}
+                targets_by_name = group_targets_by_name[gname]
+                retry_pairs = [
+                    (targets_by_name[tname], reports_by_name[rname])
+                    for (tname, rname) in retry_keys
+                ]
+                retry_result = gather_for_pairs(exporter, group, retry_pairs, targets, target_date, "PHASE 2")
+
+                post_retry_b_entries = []
+                for key, info in retry_result.items():
+                    cls = classify_pair(info["status"], info["conflicts"])
+                    pair_state[key] = {
+                        **info,
+                        "excluded": (info["status"] != "success"),
+                        # Only a still-Group-A retry outcome counts as a genuine
+                        # unresolved failure needing manual follow-up -- success
+                        # is included automatically, and Group B gets one more
+                        # go-ahead/drop decision below (a resolved choice either way).
+                        "manual": (cls == "A"),
+                    }
+                    if cls == "B":
+                        post_retry_b_entries.append((key[0], key[1], info["conflicts"]))
+                    # cls == "success" -> included automatically (excluded already False).
+                    # cls == "A" again -> excluded=True, manual=True, final, no more retry offered.
+
+                rows2 = [
+                    (tname, rname,
+                     info["status"] + (f" (conflicts: {info['conflicts']})" if info["conflicts"] else ""))
+                    for (tname, rname), info in sorted(retry_result.items())
+                ]
+                print_status_table(f"PHASE 2 RETRY RESULTS [{gname}]", rows2)
+
+                if post_retry_b_entries:
+                    print(
+                        f"\n  [{gname}] {len(post_retry_b_entries)} retried pair(s) now show a "
+                        f"Group B conflict instead:"
+                    )
+                    post_decisions = prompt_group_b(post_retry_b_entries)
+                    for key, decision in post_decisions.items():
+                        pair_state[key]["excluded"] = (decision == "drop")
+
+            # -- Final send for every target that had anything held back --
+            send_final(
+                mailer, group_targets_by_name[gname], pair_state,
+                {t: reports_by_target[t] for t in review_targets},
+                target_date, sent_by_group[gname], failed_by_group[gname],
+                dropped_by_group[gname], manual_by_group[gname]
+            )
+
+    # -- Cleanup + final summary (one block per group) --
     cleanup_pdfs()
     for group in TARGET_GROUPS:
         gname = group["group_name"]
         targets = group_targets[gname]
         if not targets:
             continue
-        print_final_summary(gname, len(targets), sent_by_group[gname], failed_by_group[gname])
+        print_final_summary(
+            gname, len(targets), sent_by_group[gname], failed_by_group[gname],
+            dropped_by_group[gname], manual_by_group[gname]
+        )
 
 
 if __name__ == "__main__":
